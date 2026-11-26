@@ -8,6 +8,7 @@ import android.content.res.Resources;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.DisplayMetrics;
 
 import java.util.concurrent.ExecutorService;
@@ -30,6 +31,7 @@ public final class ShizukuSwipeEngine {
     private static boolean sRunning = false;
     private static int sDone = 0;
     private static SwipeConfig sConfig;
+    private static long sStartTime = 0L;
 
     private static final Handler sHandler = new Handler(Looper.getMainLooper());
     private static final ExecutorService sExecutor = Executors.newSingleThreadExecutor();
@@ -106,6 +108,7 @@ public final class ShizukuSwipeEngine {
         sConfig = config;
         sDone = 0;
         sRunning = true;
+        sStartTime = SystemClock.elapsedRealtime();
         sHandler.post(sTask);
     }
 
@@ -118,6 +121,14 @@ public final class ShizukuSwipeEngine {
         @Override
         public void run() {
             if (!sRunning || sConfig == null) return;
+
+            // 运行时长上限（0 = 不限）
+            if (sConfig.maxDurationSec > 0
+                    && SystemClock.elapsedRealtime() - sStartTime >= sConfig.maxDurationSec * 1000L) {
+                stop();
+                return;
+            }
+
             if (sService == null) {
                 // UserService 尚未绑定完成，稍后重试
                 sHandler.postDelayed(this, 500L);
