@@ -65,7 +65,7 @@ public class MainActivity extends Activity {
         Button btnPermission = new Button(this);
         btnPermission.setText("1. 开启无障碍权限");
         btnPermission.setOnClickListener(v -> openAccessibilitySettings());
-        root.addView(fullWidth(btnPermission));
+        root.addView(btnPermission, fullWidth(btnPermission));
 
         tvStatus = new TextView(this);
         tvStatus.setTextSize(15f);
