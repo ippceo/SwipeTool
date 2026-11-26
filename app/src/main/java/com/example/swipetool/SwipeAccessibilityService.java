@@ -5,6 +5,7 @@ import android.accessibilityservice.GestureDescription;
 import android.graphics.Path;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.WindowManager;
@@ -25,11 +26,19 @@ public class SwipeAccessibilityService extends AccessibilityService {
     private SwipeConfig mConfig;
     private boolean mRunning = false;
     private int mDoneCount = 0;
+    private long mStartTime = 0L;
 
     private final Runnable mSwipeRunnable = new Runnable() {
         @Override
         public void run() {
             if (!mRunning || mConfig == null) return;
+
+            // 运行时长上限（0 = 不限）
+            if (mConfig.maxDurationSec > 0
+                    && SystemClock.elapsedRealtime() - mStartTime >= mConfig.maxDurationSec * 1000L) {
+                stop();
+                return;
+            }
 
             boolean dispatched = swipeOnce(mConfig);
             if (!dispatched) {
@@ -107,6 +116,7 @@ public class SwipeAccessibilityService extends AccessibilityService {
         mConfig = config;
         mDoneCount = 0;
         mRunning = true;
+        mStartTime = SystemClock.elapsedRealtime();
         mHandler.post(mSwipeRunnable);
     }
 
