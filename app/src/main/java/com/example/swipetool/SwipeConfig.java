@@ -27,4 +27,6 @@ public class SwipeConfig {
     public float curveDp = 0f;
     /** 是否使用 Shizuku 执行（false = 无障碍服务） */
     public boolean useShizuku = false;
+    /** 运行时长上限，单位秒，0 表示不限制（到时自动停止） */
+    public long maxDurationSec = 0L;
 }
