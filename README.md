@@ -51,7 +51,7 @@ Shizuku 方式为直线滑动；往返与曲线轨迹仅无障碍方式支持。
 
 ## 安装
 
-从 [Actions](https://github.com/ippceo/SwipeTool/actions) 页面下载最新一次构建的 `SwipeTool-debug-apk` 产物，解压得到 `app-debug.apk`，传输到手机安装（debug 签名，需允许「未知来源安装」）。
+推荐从 [Releases](https://github.com/ippceo/SwipeTool/releases) 下载最新的 `app-release.apk` 直接安装；也可从 [Actions](https://github.com/ippceo/SwipeTool/actions) 下载构建产物。均为 debug 签名，需允许「未知来源安装」。
 
 ## 使用
 
@@ -67,9 +67,10 @@ Shizuku 方式为直线滑动；往返与曲线轨迹仅无障碍方式支持。
 本项目通过 GitHub Actions 在云端编译，本地**不需要**安装 Android Studio / JDK / Gradle。
 
 - 工作流：`.github/workflows/build.yml`
-- 触发：向 `master` / `main` 分支 push，或在 Actions 页面手动 `Run workflow`
-- 产物：`app/build/outputs/apk/debug/app-debug.apk`，上传为 artifact
-- 环境：JDK 17 + 预装 Android SDK（`platforms;android-34`、`build-tools;34.0.0`）+ Gradle 8.7（构建时下载，不依赖 `gradle-wrapper.jar`）
+- 触发：向 `master` / `main` 分支 push，推送 `v*` tag，或在 Actions 页面手动 `Run workflow`
+- 产物：`app/build/outputs/apk/debug/app-debug.apk` 与 `app/build/outputs/apk/release/app-release.apk`，分别上传为 artifact
+- 发布：推送 `v*` tag 时自动创建 GitHub Release 并附上 release APK（release 使用 debug keystore 签名，个人安装即可用）
+- 环境：JDK 17 + 预装 Android SDK（`platforms;android-34`、`build-tools;34.0.0`）+ Gradle 8.7（构建时下载，不依赖 `gradle-wrapper.jar`）；依赖走阿里云 Maven 镜像，避免 Maven Central 限流
 
 ## 本地构建（可选）
 
@@ -86,16 +87,20 @@ gradle assembleDebug
 
 ```
 SwipeTool/
-├── .github/workflows/build.yml          # 云端编译 APK
+├── .github/workflows/build.yml          # 云端编译 debug + release APK，打 tag 时发布 Release
 ├── app/
-│   ├── build.gradle                     # 模块配置（compileSdk 34 / minSdk 24）
+│   ├── build.gradle                     # 模块配置（compileSdk 34 / minSdk 24，含 Shizuku 依赖与 AIDL）
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml
+│       ├── aidl/com/example/swipetool/
+│       │   └── ISwipeService.aidl             # Shizuku UserService 接口
 │       ├── java/com/example/swipetool/
 │       │   ├── MainActivity.java              # 控制面板
-│       │   ├── SwipeAccessibilityService.java # 手势引擎
-│       │   └── SwipeConfig.java               # 参数模型
+│       │   ├── SwipeAccessibilityService.java # 无障碍手势引擎
+│       │   ├── SwipeConfig.java               # 参数模型
+│       │   ├── ShizukuSwipeEngine.java        # Shizuku 执行引擎（绑定并调度 UserService）
+│       │   └── SwipeUserService.java          # 运行在 shell 权限进程，执行 input swipe
 │       └── res/                               # 图标、字符串、主题、无障碍配置
 ├── build.gradle
 ├── settings.gradle
@@ -104,13 +109,15 @@ SwipeTool/
 
 ## 已知限制
 
-- 滑动在当前前台屏幕上执行；切到其他 App 后无法从本 App 界面直接停止，需回到 App 或关闭无障碍服务。
+- 滑动在当前前台屏幕上执行；切到其他 App 后无法从本 App 界面直接停止，需回到 App 或关闭服务。
 - 部分厂商系统（MIUI / ColorOS 等）对无障碍服务有额外限制，若被自动关闭需在系统设置里加入白名单。
 - 坐标系为物理屏幕像素，起点与终点会自动裁剪到屏幕范围内。
+- Shizuku 方式需自行安装并激活 Shizuku（或 Sui）；部分设备重启后需重新启动 Shizuku 服务。
+- Shizuku 方式为直线滑动，不支持往返与曲线轨迹（受 `input swipe` 能力限制）。
 
 ## 权限与免责声明
 
-- 仅使用 Android 无障碍服务发送通用手势，不读取屏幕内容、不联网、不上传任何数据。
+- 无障碍方式仅通过无障碍服务发送通用手势；Shizuku 方式通过 UserService 以 shell(ADB) 权限执行 `input swipe`。两者都不读取屏幕内容、不联网、不上传任何数据。
 - 本项目仅用于自动化操作辅助（如长页面滚动、手势测试等中性场景），请勿用于绕过平台风控、刷量或任何违反第三方服务条款的用途。
 
 ## License
