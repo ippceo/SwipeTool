@@ -1,6 +1,7 @@
 package com.example.swipetool;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -33,7 +34,7 @@ public class MainActivity extends Activity {
 
     private static final int REQ_SHIZUKU = 1001;
 
-    private EditText etX, etY, etAngle, etDistance, etDuration, etInterval, etLoops, etPause, etCurve;
+    private EditText etX, etY, etAngle, etDistance, etDuration, etInterval, etLoops, etPause, etCurve, etMaxDur;
     private CheckBox cbRoundTrip;
     private Button btnStart, btnStop;
     private TextView tvStatus;
@@ -179,6 +180,12 @@ public class MainActivity extends Activity {
         etPause = addField(root, "往返停顿 ms", "200");
         etCurve = addField(root, "轨迹弯曲幅度 dp（0=直线）", "0");
         etLoops = addField(root, "循环次数（0=无限）", "0");
+        etMaxDur = addField(root, "运行时长上限（秒，0=不限，到时自动停）", "0");
+
+        Button btnPreset = new Button(this);
+        btnPreset.setText("参数预设（保存 / 加载）");
+        btnPreset.setOnClickListener(v -> showPresetDialog());
+        root.addView(btnPreset, fullWidth(btnPreset));
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -353,8 +360,57 @@ public class MainActivity extends Activity {
         c.roundTrip = cbRoundTrip.isChecked();
         c.pauseMs = clampL((long) parseLong(etPause, c.pauseMs), 0L, 60000L);
         c.curveDp = clampF(parseFloat(etCurve, c.curveDp), -2000f, 2000f);
+        c.maxDurationSec = clampL(parseLong(etMaxDur, c.maxDurationSec), 0L, 86400L);
         c.useShizuku = useShizukuMode();
         return c;
+    }
+
+    private void showPresetDialog() {
+        final String[] items = new String[]{
+                "槽 1 · 保存当前", "槽 1 · 加载",
+                "槽 2 · 保存当前", "槽 2 · 加载",
+                "槽 3 · 保存当前", "槽 3 · 加载"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("参数预设")
+                .setItems(items, (d, which) -> {
+                    int slot = which / 2 + 1;
+                    if (which % 2 == 0) {
+                        SwipeConfigStore.saveSlot(this, slot, collectConfig());
+                        Toast.makeText(this, "已保存到槽 " + slot, Toast.LENGTH_SHORT).show();
+                    } else {
+                        applyConfigToUi(SwipeConfigStore.loadSlot(this, slot));
+                        Toast.makeText(this, "已加载槽 " + slot, Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void applyConfigToUi(SwipeConfig c) {
+        etX.setText(fmtNum(c.xPercent));
+        etY.setText(fmtNum(c.yPercent));
+        etAngle.setText(fmtNum(c.angle));
+        etDistance.setText(fmtNum(c.distanceDp));
+        etDuration.setText(String.valueOf(c.durationMs));
+        etInterval.setText(String.valueOf(c.intervalMs));
+        etLoops.setText(String.valueOf(c.loops));
+        cbRoundTrip.setChecked(c.roundTrip);
+        etPause.setText(String.valueOf(c.pauseMs));
+        etCurve.setText(fmtNum(c.curveDp));
+        etMaxDur.setText(String.valueOf(c.maxDurationSec));
+        if (c.useShizuku) {
+            rbShizuku.setChecked(true);
+        } else {
+            rbA11y.setChecked(true);
+        }
+    }
+
+    private static String fmtNum(float v) {
+        if (v == Math.floor(v)) {
+            return String.valueOf((int) v);
+        }
+        return String.valueOf(v);
     }
 
     private void startSwipe() {
