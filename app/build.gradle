@@ -17,6 +17,9 @@ android {
     buildTypes {
         release {
             minifyEnabled false
+            // 复用 AGP 自动生成的 debug keystore 为 release 签名，个人安装即可用。
+            // 若要正式发布到应用商店，请替换为自己的 keystore 并通过 GitHub Secrets 注入。
+            signingConfig signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -27,8 +30,5 @@ android {
     }
 }
 
-dependencies {
-    implementation 'androidx.appcompat:appcompat:1.7.0'
-    implementation 'com.google.android.material:material:1.12.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.2.0'
-}
+// 本应用只使用 Android 原生控件（android.app.Activity + 代码构建 UI），
+// 不依赖 AppCompat/Material/ConstraintLayout，故无第三方依赖。
