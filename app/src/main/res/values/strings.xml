@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">屏幕滑动工具</string>
+    <string name="accessibility_description">屏幕滑动工具：通过系统手势在屏幕上执行通用滑动操作，可调方向、角度、位置与速度。仅做触摸事件模拟，不采集任何信息。</string>
+</resources>
