@@ -9,8 +9,6 @@ import android.util.DisplayMetrics;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.WindowManager;
 
-import java.util.Locale;
-
 /**
  * 基于无障碍服务的屏幕滑动引擎。
  *
@@ -19,9 +17,6 @@ import java.util.Locale;
  * 这里只做通用的输入事件模拟，不针对任何具体 App 做识别或对抗。
  */
 public class SwipeAccessibilityService extends AccessibilityService {
-
-    public static final String ACTION_START = "com.example.swipetool.START";
-    public static final String ACTION_STOP = "com.example.swipetool.STOP";
 
     /** 静态实例，供 Activity 直接调用（同进程内）。 */
     private static SwipeAccessibilityService sInstance;
@@ -49,7 +44,11 @@ public class SwipeAccessibilityService extends AccessibilityService {
                 stop();
                 return;
             }
-            long cycle = mConfig.durationMs + mConfig.intervalMs;
+            // 一次完整循环耗时：往返时含去程+停顿+回程，再加用户设定的间隔。
+            long gestureSpan = mConfig.roundTrip
+                    ? (mConfig.durationMs * 2L + mConfig.pauseMs)
+                    : mConfig.durationMs;
+            long cycle = gestureSpan + mConfig.intervalMs + 50L; // 50ms 余量，避免手势重叠
             mHandler.postDelayed(this, cycle);
         }
     };
@@ -126,14 +125,17 @@ public class SwipeAccessibilityService extends AccessibilityService {
         wm.getDefaultDisplay().getMetrics(dm);
 
         float density = dm.density;
-        float sx = dm.widthPixels * (c.xPercent / 100f);
-        float sy = dm.heightPixels * (c.yPercent / 100f);
+        float maxX = dm.widthPixels - 1f;
+        float maxY = dm.heightPixels - 1f;
+        float sx = clamp(dm.widthPixels * (c.xPercent / 100f), 1f, maxX);
+        float sy = clamp(dm.heightPixels * (c.yPercent / 100f), 1f, maxY);
 
         double rad = Math.toRadians(c.angle);
         float dx = (float) (c.distanceDp * density * Math.cos(rad));
         float dy = (float) (c.distanceDp * density * Math.sin(rad));
-        float ex = sx + dx;
-        float ey = sy + dy;
+        // 终点限制在屏幕内，避免越界坐标导致 dispatchGesture 失败
+        float ex = clamp(sx + dx, 1f, maxX);
+        float ey = clamp(sy + dy, 1f, maxY);
 
         GestureDescription.Builder builder = new GestureDescription.Builder();
 
@@ -154,6 +156,11 @@ public class SwipeAccessibilityService extends AccessibilityService {
         }
 
         return dispatchGesture(builder.build(), null, mHandler);
+    }
+
+    /** 将数值限制在 [min, max] 区间内。 */
+    private static float clamp(float v, float min, float max) {
+        return v < min ? min : (v > max ? max : v);
     }
 
     /**

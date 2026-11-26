@@ -1,13 +1,13 @@
 package com.example.swipetool;
 
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
 import android.util.TypedValue;
-import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -29,6 +29,15 @@ public class MainActivity extends Activity {
     private Button btnStart, btnStop;
     private TextView tvStatus;
 
+    private final Handler mStatusHandler = new Handler(Looper.getMainLooper());
+    private final Runnable mStatusTicker = new Runnable() {
+        @Override
+        public void run() {
+            refreshStatus();
+            mStatusHandler.postDelayed(this, 500L);
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -39,7 +48,14 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        refreshStatus();
+        mStatusHandler.removeCallbacks(mStatusTicker);
+        mStatusHandler.post(mStatusTicker);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        mStatusHandler.removeCallbacks(mStatusTicker);
     }
 
     private View buildUi() {
@@ -114,7 +130,7 @@ public class MainActivity extends Activity {
 
         TextView foot = new TextView(this);
         foot.setText("提示：开始后可切到任意 App，滑动会在当前屏幕上执行。\n"
-                + "停止请回到本页点「停止」，或下拉通知栏结束服务。");
+                + "停止请回到本页点「停止」；若已离开本页，可重新打开 App 或关闭无障碍服务。");
         foot.setTextSize(13f);
         foot.setTextColor(0xFF777777);
         foot.setPadding(0, dp(12), 0, 0);
@@ -178,20 +194,16 @@ public class MainActivity extends Activity {
             return;
         }
         SwipeConfig c = new SwipeConfig();
-        c.xPercent = parseFloat(etX, c.xPercent);
-        c.yPercent = parseFloat(etY, c.yPercent);
-        c.angle = parseFloat(etAngle, c.angle);
-        c.distanceDp = parseFloat(etDistance, c.distanceDp);
-        c.durationMs = (long) parseLong(etDuration, c.durationMs);
-        c.intervalMs = (long) parseLong(etInterval, c.intervalMs);
-        c.loops = (int) parseLong(etLoops, c.loops);
+        c.xPercent = clampF(parseFloat(etX, c.xPercent), 0f, 100f);
+        c.yPercent = clampF(parseFloat(etY, c.yPercent), 0f, 100f);
+        c.angle = normalizeAngle(parseFloat(etAngle, c.angle));
+        c.distanceDp = clampF(parseFloat(etDistance, c.distanceDp), 1f, 4000f);
+        c.durationMs = clampL((long) parseLong(etDuration, c.durationMs), 50L, 60000L);
+        c.intervalMs = clampL((long) parseLong(etInterval, c.intervalMs), 0L, 600000L);
+        c.loops = (int) clampL(parseLong(etLoops, c.loops), 0L, 1000000L);
         c.roundTrip = cbRoundTrip.isChecked();
-        c.pauseMs = (long) parseLong(etPause, c.pauseMs);
-        c.curveDp = parseFloat(etCurve, c.curveDp);
-
-        if (c.durationMs < 50) c.durationMs = 50;
-        if (c.intervalMs < 0) c.intervalMs = 0;
-        if (c.loops < 0) c.loops = 0;
+        c.pauseMs = clampL((long) parseLong(etPause, c.pauseMs), 0L, 60000L);
+        c.curveDp = clampF(parseFloat(etCurve, c.curveDp), -2000f, 2000f);
 
         SwipeAccessibilityService.start(c);
         Toast.makeText(this, "开始滑动", Toast.LENGTH_SHORT).show();
@@ -206,6 +218,20 @@ public class MainActivity extends Activity {
     private long parseLong(EditText et, long def) {
         try { return Long.parseLong(et.getText().toString().trim()); }
         catch (Exception e) { return def; }
+    }
+
+    private static float clampF(float v, float min, float max) {
+        return v < min ? min : (v > max ? max : v);
+    }
+
+    private static long clampL(long v, long min, long max) {
+        return v < min ? min : (v > max ? max : v);
+    }
+
+    /** 把任意角度归一化到 [0, 360)。 */
+    private static float normalizeAngle(float a) {
+        float r = a % 360f;
+        return r < 0 ? r + 360f : r;
     }
 
     // ---------- UI 辅助方法 ----------
