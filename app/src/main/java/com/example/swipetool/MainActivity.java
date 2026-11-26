@@ -2,6 +2,7 @@ package com.example.swipetool;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -14,20 +15,28 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import rikka.shizuku.Shizuku;
+
 /**
  * 控制面板：设置滑动的方向 / 角度 / 位置 / 速度 / 次数 / 间隔，
- * 然后启动或停止滑动服务。
+ * 选择执行方式（无障碍服务 / Shizuku），然后启动或停止滑动。
  */
 public class MainActivity extends Activity {
+
+    private static final int REQ_SHIZUKU = 1001;
 
     private EditText etX, etY, etAngle, etDistance, etDuration, etInterval, etLoops, etPause, etCurve;
     private CheckBox cbRoundTrip;
     private Button btnStart, btnStop;
     private TextView tvStatus;
+    private RadioGroup rgMode;
+    private RadioButton rbA11y, rbShizuku;
 
     private final Handler mStatusHandler = new Handler(Looper.getMainLooper());
     private final Runnable mStatusTicker = new Runnable() {
@@ -38,10 +47,25 @@ public class MainActivity extends Activity {
         }
     };
 
+    private final Shizuku.OnRequestPermissionResultListener mShizukuListener =
+            (requestCode, grantResult) -> {
+                if (requestCode != REQ_SHIZUKU) return;
+                boolean granted = grantResult == PackageManager.PERMISSION_GRANTED;
+                Toast.makeText(MainActivity.this,
+                        granted ? "Shizuku 已授权" : "Shizuku 授权被拒绝",
+                        Toast.LENGTH_SHORT).show();
+                if (granted) ShizukuSwipeEngine.bind(this);
+                refreshStatus();
+            };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(buildUi());
+        try {
+            Shizuku.addRequestPermissionResultListener(mShizukuListener);
+        } catch (Throwable ignored) {
+        }
         refreshStatus();
     }
 
@@ -58,6 +82,15 @@ public class MainActivity extends Activity {
         mStatusHandler.removeCallbacks(mStatusTicker);
     }
 
+    @Override
+    protected void onDestroy() {
+        try {
+            Shizuku.removeRequestPermissionResultListener(mShizukuListener);
+        } catch (Throwable ignored) {
+        }
+        super.onDestroy();
+    }
+
     private View buildUi() {
         int pad = dp(16);
 
@@ -71,17 +104,45 @@ public class MainActivity extends Activity {
         addTitle(root, "屏幕滑动工具");
         TextView hint = new TextView(this);
         hint.setText("纯触摸事件模拟 · 方向 / 角度 / 位置 / 速度可调\n"
-                + "首次使用需开启无障碍权限，然后回到本页点「开始滑动」。");
+                + "执行方式可选「无障碍服务」或「Shizuku」。");
         hint.setTextSize(14f);
         hint.setTextColor(0xFF555555);
         hint.setPadding(0, 0, 0, dp(8));
         root.addView(hint);
 
-        // 无障碍权限入口
+        // 执行方式
+        addSection(root, "执行方式");
+        rgMode = new RadioGroup(this);
+        rgMode.setOrientation(RadioGroup.HORIZONTAL);
+        rbA11y = new RadioButton(this);
+        rbA11y.setId(View.generateViewId());
+        rbA11y.setText("无障碍服务");
+        rbShizuku = new RadioButton(this);
+        rbShizuku.setId(View.generateViewId());
+        rbShizuku.setText("Shizuku");
+        rgMode.addView(rbA11y);
+        rgMode.addView(rbShizuku);
+        rgMode.check(rbA11y.getId());
+        rgMode.setOnCheckedChangeListener((group, checkedId) -> {
+            if (checkedId == rbShizuku.getId()
+                    && ShizukuSwipeEngine.isAvailable()
+                    && ShizukuSwipeEngine.hasPermission()) {
+                ShizukuSwipeEngine.bind(this);
+            }
+            refreshStatus();
+        });
+        root.addView(rgMode);
+
+        // 权限入口
         Button btnPermission = new Button(this);
-        btnPermission.setText("1. 开启无障碍权限");
+        btnPermission.setText("1a. 开启无障碍权限");
         btnPermission.setOnClickListener(v -> openAccessibilitySettings());
         root.addView(btnPermission, fullWidth(btnPermission));
+
+        Button btnShizukuPerm = new Button(this);
+        btnShizukuPerm.setText("1b. 检查 / 授权 Shizuku");
+        btnShizukuPerm.setOnClickListener(v -> ensureShizuku());
+        root.addView(btnShizukuPerm, fullWidth(btnShizukuPerm));
 
         tvStatus = new TextView(this);
         tvStatus.setTextSize(15f);
@@ -121,6 +182,7 @@ public class MainActivity extends Activity {
         btnStop.setText("■ 停止");
         btnStop.setOnClickListener(v -> {
             SwipeAccessibilityService.stop();
+            ShizukuSwipeEngine.stop();
             refreshStatus();
             Toast.makeText(this, "已停止", Toast.LENGTH_SHORT).show();
         });
@@ -130,7 +192,8 @@ public class MainActivity extends Activity {
 
         TextView foot = new TextView(this);
         foot.setText("提示：开始后可切到任意 App，滑动会在当前屏幕上执行。\n"
-                + "停止请回到本页点「停止」；若已离开本页，可重新打开 App 或关闭无障碍服务。");
+                + "Shizuku 方式需要先安装并启动 Shizuku App 并授权；"
+                + "往返/曲线轨迹仅无障碍方式支持，Shizuku 方式为直线。");
         foot.setTextSize(13f);
         foot.setTextColor(0xFF777777);
         foot.setPadding(0, dp(12), 0, 0);
@@ -154,6 +217,22 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void ensureShizuku() {
+        if (!ShizukuSwipeEngine.isAvailable()) {
+            Toast.makeText(this, "Shizuku 未运行\n请先安装 Shizuku App 并用 ADB / root 启动服务",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (ShizukuSwipeEngine.hasPermission()) {
+            ShizukuSwipeEngine.bind(this);
+            Toast.makeText(this, "Shizuku 已授权，已连接服务", Toast.LENGTH_SHORT).show();
+        } else {
+            ShizukuSwipeEngine.requestPermission(REQ_SHIZUKU);
+            Toast.makeText(this, "已发起授权请求，请在弹窗中允许", Toast.LENGTH_LONG).show();
+        }
+        refreshStatus();
+    }
+
     private boolean isAccessibilityEnabled() {
         int enabled = Settings.Secure.getInt(getContentResolver(),
                 Settings.Secure.ACCESSIBILITY_ENABLED, 0);
@@ -168,31 +247,64 @@ public class MainActivity extends Activity {
         return false;
     }
 
-    private void refreshStatus() {
-        boolean perm = isAccessibilityEnabled();
-        boolean connected = SwipeAccessibilityService.isConnected();
-        boolean running = SwipeAccessibilityService.isRunning();
-        String status;
-        if (!perm) {
-            status = "状态：✗ 无障碍权限未开启";
-        } else if (!connected) {
-            status = "状态：权限已开启，服务未连接（可尝试重启 App）";
-        } else if (running) {
-            status = "状态：● 正在滑动，已完成 "
-                    + SwipeAccessibilityService.getDoneCount() + " 次";
-        } else {
-            status = "状态：✓ 就绪，可以开始";
-        }
-        tvStatus.setText(status);
-        btnStart.setEnabled(perm && connected && !running);
-        btnStop.setEnabled(running);
+    private boolean useShizukuMode() {
+        return rbShizuku != null && rbShizuku.isChecked();
     }
 
-    private void startSwipe() {
-        if (!isAccessibilityEnabled() || !SwipeAccessibilityService.isConnected()) {
-            Toast.makeText(this, "请先开启无障碍权限", Toast.LENGTH_SHORT).show();
-            return;
+    private void refreshStatus() {
+        String status;
+        boolean canStart;
+        boolean canStop;
+
+        if (useShizukuMode()) {
+            if (!ShizukuSwipeEngine.isAvailable()) {
+                status = "状态：✗ Shizuku 未运行（请先启动 Shizuku）";
+                canStart = false;
+                canStop = false;
+            } else if (!ShizukuSwipeEngine.hasPermission()) {
+                status = "状态：Shizuku 运行中，未授权（点「1b」授权）";
+                canStart = false;
+                canStop = false;
+            } else if (ShizukuSwipeEngine.isRunning()) {
+                status = "状态：● 正在滑动（Shizuku），已完成 "
+                        + ShizukuSwipeEngine.getDoneCount() + " 次";
+                canStart = false;
+                canStop = true;
+            } else {
+                status = "状态：✓ Shizuku 就绪，可以开始";
+                canStart = true;
+                canStop = false;
+            }
+        } else {
+            boolean perm = isAccessibilityEnabled();
+            boolean connected = SwipeAccessibilityService.isConnected();
+            boolean running = SwipeAccessibilityService.isRunning();
+            if (!perm) {
+                status = "状态：✗ 无障碍权限未开启";
+                canStart = false;
+                canStop = false;
+            } else if (!connected) {
+                status = "状态：权限已开启，服务未连接（可尝试重启 App）";
+                canStart = false;
+                canStop = false;
+            } else if (running) {
+                status = "状态：● 正在滑动（无障碍），已完成 "
+                        + SwipeAccessibilityService.getDoneCount() + " 次";
+                canStart = false;
+                canStop = true;
+            } else {
+                status = "状态：✓ 就绪，可以开始";
+                canStart = true;
+                canStop = false;
+            }
         }
+
+        tvStatus.setText(status);
+        btnStart.setEnabled(canStart);
+        btnStop.setEnabled(canStop);
+    }
+
+    private SwipeConfig collectConfig() {
         SwipeConfig c = new SwipeConfig();
         c.xPercent = clampF(parseFloat(etX, c.xPercent), 0f, 100f);
         c.yPercent = clampF(parseFloat(etY, c.yPercent), 0f, 100f);
@@ -204,9 +316,34 @@ public class MainActivity extends Activity {
         c.roundTrip = cbRoundTrip.isChecked();
         c.pauseMs = clampL((long) parseLong(etPause, c.pauseMs), 0L, 60000L);
         c.curveDp = clampF(parseFloat(etCurve, c.curveDp), -2000f, 2000f);
+        return c;
+    }
 
-        SwipeAccessibilityService.start(c);
-        Toast.makeText(this, "开始滑动", Toast.LENGTH_SHORT).show();
+    private void startSwipe() {
+        SwipeConfig c = collectConfig();
+
+        if (useShizukuMode()) {
+            if (!ShizukuSwipeEngine.isAvailable()) {
+                Toast.makeText(this, "Shizuku 未运行：请先安装并启动 Shizuku App",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (!ShizukuSwipeEngine.hasPermission()) {
+                Toast.makeText(this, "请先点「1b. 检查 / 授权 Shizuku」并允许授权",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            ShizukuSwipeEngine.bind(this);
+            ShizukuSwipeEngine.start(c);
+            Toast.makeText(this, "开始滑动（Shizuku）", Toast.LENGTH_SHORT).show();
+        } else {
+            if (!isAccessibilityEnabled() || !SwipeAccessibilityService.isConnected()) {
+                Toast.makeText(this, "请先开启无障碍权限", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            SwipeAccessibilityService.start(c);
+            Toast.makeText(this, "开始滑动", Toast.LENGTH_SHORT).show();
+        }
         refreshStatus();
     }
 
