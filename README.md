@@ -1,6 +1,6 @@
 # SwipeTool · 屏幕滑动工具
 
-一个轻量的 Android 手势工具：通过无障碍服务在屏幕上执行**可调方向、角度、位置、速度**的滑动操作。纯触摸事件模拟，不采集数据、不针对任何具体 App。
+一个轻量的 Android 手势工具：通过无障碍服务或 Shizuku 在屏幕上执行**可调方向、角度、位置、速度**的滑动操作。纯触摸事件模拟，不采集数据、不针对任何具体 App。
 
 ![Build APK](https://github.com/ippceo/SwipeTool/actions/workflows/build.yml/badge.svg)
 
@@ -13,6 +13,7 @@
 - **循环**：单次或循环，次数可设（0 = 无限）
 - **往返**：到达终点后自动滑回起点，可设停顿
 - **节奏**：两次滑动之间可设间隔
+- **执行方式**：无障碍服务（支持往返 / 曲线轨迹）或 Shizuku（shell 权限直线滑动，无需无障碍）
 
 ## 参数说明
 
@@ -38,17 +39,28 @@
 
 全程只发送标准的触摸事件序列，没有任何平台识别或对抗逻辑。
 
+### Shizuku 方式（可选）
+
+选择 Shizuku 执行时走另一条通道：
+
+1. `ShizukuSwipeEngine` 通过 `Shizuku.bindUserService` 绑定一个运行在 shell(ADB) 权限进程中的 `SwipeUserService`。
+2. `SwipeUserService` 执行系统的 `input swipe x1 y1 x2 y2 duration` 命令注入滑动。
+3. 前提：设备已安装并启动 [Shizuku](https://shizuku.rikka.app/download/)（或 Sui），并已向本应用授权。
+
+Shizuku 方式为直线滑动；往返与曲线轨迹仅无障碍方式支持。
+
 ## 安装
 
 从 [Actions](https://github.com/ippceo/SwipeTool/actions) 页面下载最新一次构建的 `SwipeTool-debug-apk` 产物，解压得到 `app-debug.apk`，传输到手机安装（debug 签名，需允许「未知来源安装」）。
 
 ## 使用
 
-1. 打开 App，点「1. 开启无障碍权限」。
-2. 在系统设置里找到「屏幕滑动工具」，打开开关。
-3. 返回 App，设置参数，点「开始滑动」。
-4. 切到任意界面，滑动会在当前屏幕上执行。
-5. 停止：回到 App 点「停止」；若已离开，可重新打开 App 或关闭无障碍服务。
+1. 打开 App，选择「执行方式」：
+   - **无障碍服务**：点「1a. 开启无障碍权限」，在系统设置里找到「屏幕滑动工具」并打开开关。
+   - **Shizuku**：先安装并启动 Shizuku（或 Sui），点「1b. 检查 / 授权 Shizuku」，在弹窗中允许授权。
+2. 返回 App，设置参数，点「开始滑动」。
+3. 切到任意界面，滑动会在当前屏幕上执行。
+4. 停止：回到 App 点「停止」。
 
 ## 云端构建（无需本地环境）
 
