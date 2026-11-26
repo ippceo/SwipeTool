@@ -3,6 +3,8 @@ package com.example.swipetool;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -144,6 +146,11 @@ public class MainActivity extends Activity {
         btnShizukuPerm.setOnClickListener(v -> ensureShizuku());
         root.addView(btnShizukuPerm, fullWidth(btnShizukuPerm));
 
+        Button btnFloat = new Button(this);
+        btnFloat.setText("1c. 开启悬浮球（跨应用快速启停）");
+        btnFloat.setOnClickListener(v -> toggleFloating());
+        root.addView(btnFloat, fullWidth(btnFloat));
+
         tvStatus = new TextView(this);
         tvStatus.setTextSize(15f);
         tvStatus.setPadding(0, dp(8), 0, dp(8));
@@ -233,6 +240,36 @@ public class MainActivity extends Activity {
         refreshStatus();
     }
 
+    private void toggleFloating() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, "请先允许「显示在其他应用上层」", Toast.LENGTH_LONG).show();
+            try {
+                startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName())));
+            } catch (Exception ignored) {
+            }
+            return;
+        }
+        // 保存当前界面配置，供悬浮球在任意界面复用
+        SwipeConfigStore.save(this, collectConfig());
+
+        // Android 13+ 通知权限（前台服务通知）
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 2002);
+        }
+
+        Intent i = new Intent(this, FloatingService.class)
+                .setAction(FloatingService.ACTION_START);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(i);
+        } else {
+            startService(i);
+        }
+        Toast.makeText(this, "悬浮球已开启：切到任意界面，点它开始/停止", Toast.LENGTH_LONG).show();
+    }
+
     private boolean isAccessibilityEnabled() {
         int enabled = Settings.Secure.getInt(getContentResolver(),
                 Settings.Secure.ACCESSIBILITY_ENABLED, 0);
@@ -316,13 +353,15 @@ public class MainActivity extends Activity {
         c.roundTrip = cbRoundTrip.isChecked();
         c.pauseMs = clampL((long) parseLong(etPause, c.pauseMs), 0L, 60000L);
         c.curveDp = clampF(parseFloat(etCurve, c.curveDp), -2000f, 2000f);
+        c.useShizuku = useShizukuMode();
         return c;
     }
 
     private void startSwipe() {
         SwipeConfig c = collectConfig();
+        SwipeConfigStore.save(this, c);
 
-        if (useShizukuMode()) {
+        if (c.useShizuku) {
             if (!ShizukuSwipeEngine.isAvailable()) {
                 Toast.makeText(this, "Shizuku 未运行：请先安装并启动 Shizuku App",
                         Toast.LENGTH_LONG).show();
