@@ -25,4 +25,6 @@ public class SwipeConfig {
     public long pauseMs = 200L;
     /** 轨迹弯曲幅度，单位 dp，0 表示直线 */
     public float curveDp = 0f;
+    /** 是否使用 Shizuku 执行（false = 无障碍服务） */
+    public boolean useShizuku = false;
 }
