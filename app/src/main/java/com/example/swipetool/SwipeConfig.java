@@ -29,4 +29,6 @@ public class SwipeConfig {
     public boolean useShizuku = false;
     /** 运行时长上限，单位秒，0 表示不限制（到时自动停止） */
     public long maxDurationSec = 0L;
+    /** 随机抖动强度 0-100（%），影响距离、角度、起点与间隔；0 表示关闭 */
+    public float jitterPercent = 0f;
 }

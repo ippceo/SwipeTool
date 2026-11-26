@@ -149,7 +149,13 @@ public final class ShizukuSwipeEngine {
                         return;
                     }
                     long span = c.roundTrip ? (c.durationMs * 2L + c.pauseMs) : c.durationMs;
-                    sHandler.postDelayed(sTask, span + c.intervalMs + 50L);
+                    // 间隔抖动：±jitter% 的间隔扰动
+                    float jj = Math.max(0f, Math.min(1f, c.jitterPercent / 100f));
+                    long interval = c.intervalMs;
+                    if (jj > 0f) {
+                        interval = Math.max(0L, Math.round(interval * (1f + rnd(-jj, jj))));
+                    }
+                    sHandler.postDelayed(sTask, span + interval + 50L);
                 });
             });
         }
@@ -159,15 +165,29 @@ public final class ShizukuSwipeEngine {
         DisplayMetrics dm = Resources.getSystem().getDisplayMetrics();
         float maxX = dm.widthPixels - 1f;
         float maxY = dm.heightPixels - 1f;
+        // 随机抖动：起点、角度、距离小幅扰动
+        float j = Math.max(0f, Math.min(1f, c.jitterPercent / 100f));
         float sx = clamp(dm.widthPixels * (c.xPercent / 100f), 1f, maxX);
         float sy = clamp(dm.heightPixels * (c.yPercent / 100f), 1f, maxY);
-        double rad = Math.toRadians(c.angle);
-        float ex = clamp(sx + (float) (c.distanceDp * dm.density * Math.cos(rad)), 1f, maxX);
-        float ey = clamp(sy + (float) (c.distanceDp * dm.density * Math.sin(rad)), 1f, maxY);
+        if (j > 0f) {
+            sx = clamp(sx + rnd(-j * dm.widthPixels * 0.05f, j * dm.widthPixels * 0.05f), 1f, maxX);
+            sy = clamp(sy + rnd(-j * dm.heightPixels * 0.05f, j * dm.heightPixels * 0.05f), 1f, maxY);
+        }
+        float angle = c.angle + (j > 0f ? rnd(-j * 20f, j * 20f) : 0f);
+        float distanceDp = c.distanceDp * (1f + (j > 0f ? rnd(-j, j) : 0f));
+        double rad = Math.toRadians(angle);
+        float ex = clamp(sx + (float) (distanceDp * dm.density * Math.cos(rad)), 1f, maxX);
+        float ey = clamp(sy + (float) (distanceDp * dm.density * Math.sin(rad)), 1f, maxY);
         return new int[]{(int) sx, (int) sy, (int) ex, (int) ey};
     }
 
     private static float clamp(float v, float min, float max) {
         return v < min ? min : (v > max ? max : v);
+    }
+
+    /** 返回 [min, max] 之间的随机浮点数。 */
+    private static float rnd(float min, float max) {
+        if (max <= min) return min;
+        return min + (float) Math.random() * (max - min);
     }
 }

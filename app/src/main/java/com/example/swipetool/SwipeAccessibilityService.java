@@ -57,7 +57,13 @@ public class SwipeAccessibilityService extends AccessibilityService {
             long gestureSpan = mConfig.roundTrip
                     ? (mConfig.durationMs * 2L + mConfig.pauseMs)
                     : mConfig.durationMs;
-            long cycle = gestureSpan + mConfig.intervalMs + 50L; // 50ms 余量，避免手势重叠
+            // 间隔抖动：±jitter% 的间隔扰动，避免节奏完全固定
+            float jj = Math.max(0f, Math.min(1f, mConfig.jitterPercent / 100f));
+            long interval = mConfig.intervalMs;
+            if (jj > 0f) {
+                interval = Math.max(0L, Math.round(interval * (1f + rnd(-jj, jj))));
+            }
+            long cycle = gestureSpan + interval + 50L; // 50ms 余量，避免手势重叠
             mHandler.postDelayed(this, cycle);
         }
     };
@@ -137,12 +143,21 @@ public class SwipeAccessibilityService extends AccessibilityService {
         float density = dm.density;
         float maxX = dm.widthPixels - 1f;
         float maxY = dm.heightPixels - 1f;
+
+        // 随机抖动：对起点、距离、角度做小幅扰动，让轨迹不固定
+        float j = Math.max(0f, Math.min(1f, c.jitterPercent / 100f));
         float sx = clamp(dm.widthPixels * (c.xPercent / 100f), 1f, maxX);
         float sy = clamp(dm.heightPixels * (c.yPercent / 100f), 1f, maxY);
+        if (j > 0f) {
+            sx = clamp(sx + rnd(-j * dm.widthPixels * 0.05f, j * dm.widthPixels * 0.05f), 1f, maxX);
+            sy = clamp(sy + rnd(-j * dm.heightPixels * 0.05f, j * dm.heightPixels * 0.05f), 1f, maxY);
+        }
 
-        double rad = Math.toRadians(c.angle);
-        float dx = (float) (c.distanceDp * density * Math.cos(rad));
-        float dy = (float) (c.distanceDp * density * Math.sin(rad));
+        float angle = c.angle + (j > 0f ? rnd(-j * 20f, j * 20f) : 0f);
+        float distanceDp = c.distanceDp * (1f + (j > 0f ? rnd(-j, j) : 0f));
+        double rad = Math.toRadians(angle);
+        float dx = (float) (distanceDp * density * Math.cos(rad));
+        float dy = (float) (distanceDp * density * Math.sin(rad));
         // 终点限制在屏幕内，避免越界坐标导致 dispatchGesture 失败
         float ex = clamp(sx + dx, 1f, maxX);
         float ey = clamp(sy + dy, 1f, maxY);
@@ -171,6 +186,12 @@ public class SwipeAccessibilityService extends AccessibilityService {
     /** 将数值限制在 [min, max] 区间内。 */
     private static float clamp(float v, float min, float max) {
         return v < min ? min : (v > max ? max : v);
+    }
+
+    /** 返回 [min, max] 之间的随机浮点数。 */
+    private static float rnd(float min, float max) {
+        if (max <= min) return min;
+        return min + (float) Math.random() * (max - min);
     }
 
     /**

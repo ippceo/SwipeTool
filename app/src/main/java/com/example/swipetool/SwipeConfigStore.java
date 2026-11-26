@@ -55,6 +55,7 @@ public final class SwipeConfigStore {
                 .putFloat(p + "curveDp", c.curveDp)
                 .putBoolean(p + "useShizuku", c.useShizuku)
                 .putLong(p + "maxDurationSec", c.maxDurationSec)
+                .putFloat(p + "jitterPercent", c.jitterPercent)
                 .apply();
     }
 
@@ -73,6 +74,7 @@ public final class SwipeConfigStore {
         c.curveDp = sp.getFloat(p + "curveDp", c.curveDp);
         c.useShizuku = sp.getBoolean(p + "useShizuku", c.useShizuku);
         c.maxDurationSec = sp.getLong(p + "maxDurationSec", c.maxDurationSec);
+        c.jitterPercent = sp.getFloat(p + "jitterPercent", c.jitterPercent);
         return c;
     }
 }

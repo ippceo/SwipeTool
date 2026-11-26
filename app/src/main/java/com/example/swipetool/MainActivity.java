@@ -34,7 +34,7 @@ public class MainActivity extends Activity {
 
     private static final int REQ_SHIZUKU = 1001;
 
-    private EditText etX, etY, etAngle, etDistance, etDuration, etInterval, etLoops, etPause, etCurve, etMaxDur;
+    private EditText etX, etY, etAngle, etDistance, etDuration, etInterval, etLoops, etPause, etCurve, etMaxDur, etJitter;
     private CheckBox cbRoundTrip;
     private Button btnStart, btnStop;
     private TextView tvStatus;
@@ -181,6 +181,7 @@ public class MainActivity extends Activity {
         etCurve = addField(root, "轨迹弯曲幅度 dp（0=直线）", "0");
         etLoops = addField(root, "循环次数（0=无限）", "0");
         etMaxDur = addField(root, "运行时长上限（秒，0=不限，到时自动停）", "0");
+        etJitter = addField(root, "随机抖动强度 %（0=关闭；扰动起点/角度/距离/间隔）", "0");
 
         Button btnPreset = new Button(this);
         btnPreset.setText("参数预设（保存 / 加载）");
@@ -361,6 +362,7 @@ public class MainActivity extends Activity {
         c.pauseMs = clampL((long) parseLong(etPause, c.pauseMs), 0L, 60000L);
         c.curveDp = clampF(parseFloat(etCurve, c.curveDp), -2000f, 2000f);
         c.maxDurationSec = clampL(parseLong(etMaxDur, c.maxDurationSec), 0L, 86400L);
+        c.jitterPercent = clampF(parseFloat(etJitter, c.jitterPercent), 0f, 100f);
         c.useShizuku = useShizukuMode();
         return c;
     }
@@ -399,6 +401,7 @@ public class MainActivity extends Activity {
         etPause.setText(String.valueOf(c.pauseMs));
         etCurve.setText(fmtNum(c.curveDp));
         etMaxDur.setText(String.valueOf(c.maxDurationSec));
+        etJitter.setText(fmtNum(c.jitterPercent));
         if (c.useShizuku) {
             rbShizuku.setChecked(true);
         } else {
