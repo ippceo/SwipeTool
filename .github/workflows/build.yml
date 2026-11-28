@@ -63,7 +63,6 @@ jobs:
             fi
             # KEY_PASSWORD 用于解 alias 的私钥；若未配置或与当前 keystore 不匹配，
             # 回退到 KEYSTORE_PASSWORD（多数 keystore 的 key 密码与 store 密码相同）。
-            echo "alias 条目：$(keytool -list -alias "$ALIAS" -keystore "$RUNNER_TEMP/release.jks" -storepass "$PASS" 2>/dev/null | head -n 1)"
             KEYPASS_OK=0
             for CAND in "$KEYPASS" "$PASS"; do
               [ -n "$CAND" ] || continue
