@@ -46,11 +46,20 @@ jobs:
       - name: Decode signing keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-            echo "已使用固定签名密钥。"
+            echo "decoded size: $(wc -c < "$RUNNER_TEMP/release.jks") (expect 2638)"
+            echo "decoded sha256: $(sha256sum "$RUNNER_TEMP/release.jks" | awk '{print $1}')"
+            echo "expect sha256: c9bea98b768c4d624052bbbf3e76c4252c56d0eb77fe4a6c2abd35b385e7fbf3"
+            PASS=$(printf '%s' "$KEYSTORE_PASSWORD" | tr -d '[:space:]')
+            if keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$PASS" >/dev/null 2>&1; then
+              echo "keystore password OK"
+            else
+              echo "keystore password FAILED (密码不对，或 keystore 文件损坏/被截断)"
+            fi
           else
             echo "未配置 KEYSTORE_BASE64，release 将回退 debug 签名（版本间签名会不一致）。"
           fi
