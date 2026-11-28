@@ -18,8 +18,10 @@ public class SwipeConfig {
     public float distanceMinDp = 300f;
     /** 距离随机上限，单位 dp；与下限相等即固定长度 */
     public float distanceMaxDp = 500f;
-    /** 单次滑动持续时间，单位毫秒（越小越快） */
-    public long durationMs = 500L;
+    /** 单次滑动时长的随机下限，单位毫秒（越小越快） */
+    public long durationMinMs = 400L;
+    /** 单次滑动时长的随机上限，单位毫秒；与下限相等即固定时长 */
+    public long durationMaxMs = 700L;
     /** 两次滑动之间的固定间隔，单位毫秒（未开启随机间隔时使用） */
     public long intervalMs = 500L;
     /** 是否在最小 / 最大间隔之间随机取值，让每次间隔都不同 */
@@ -58,6 +60,19 @@ public class SwipeConfig {
     public static float rnd(float min, float max) {
         if (max <= min) return min;
         return min + (float) Math.random() * (max - min);
+    }
+
+    /**
+     * 解析本次滑动实际使用的时长（毫秒）：
+     * 在 [durationMinMs, durationMaxMs] 之间随机取值；两者相等即固定时长。
+     */
+    public static long resolveDuration(SwipeConfig c) {
+        long lo = Math.min(c.durationMinMs, c.durationMaxMs);
+        long hi = Math.max(c.durationMinMs, c.durationMaxMs);
+        lo = Math.max(1L, lo);
+        hi = Math.max(lo, hi);
+        if (hi == lo) return lo;
+        return lo + (long) (Math.random() * (double) (hi - lo + 1L));
     }
 
     /**

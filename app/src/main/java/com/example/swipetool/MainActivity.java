@@ -39,14 +39,16 @@ public class MainActivity extends Activity {
     private static final int REQ_SHIZUKU = 1001;
     private static final int REQ_RECORD = 1002;
 
-    private EditText etX, etY, etAngle, etDistMin, etDistMax, etDuration, etInterval, etLoops, etPause,
-            etCurve, etMaxDur, etJitter, etIntervalMin, etIntervalMax;
+    private EditText etX, etY, etAngle, etDistMin, etDistMax, etDurationMin, etDurationMax, etInterval,
+            etLoops, etPause, etCurve, etMaxDur, etJitter, etIntervalMin, etIntervalMax;
     private CheckBox cbRoundTrip, cbIntervalRandom, cbUseRecorded;
     private Button btnStart, btnStop;
     private TextView tvStatus, tvRecorded;
     private RadioGroup rgMode;
     private RadioButton rbA11y, rbShizuku;
     private SwipePreviewView mPreview;
+    /** 复选框未勾选时折叠起来的分组。 */
+    private LinearLayout llIntervalRandom, llRoundTrip;
 
     /** 当前选中的录制序列（界面状态，保存后持久化到 SwipeConfig）。 */
     private String mRecordedId = "";
@@ -60,7 +62,8 @@ public class MainActivity extends Activity {
     private static final String INFO_ANGLE = "滑动方向角。0 = 向右，90 = 向下，180 = 向左，270 = 向上；可填任意角度实现斜向滑动。会被「随机抖动」小幅扰动。";
     private static final String INFO_DIST_MIN = "单次滑动长度的随机下限，单位 dp（会按屏幕密度换算成像素）。与「距离上限」相等时即为固定长度。";
     private static final String INFO_DIST_MAX = "单次滑动长度的随机上限，单位 dp。每次滑动都会在「下限 ~ 上限」之间随机取一个长度，不会每次都一样。";
-    private static final String INFO_DURATION = "单次手势从起点滑到终点的持续时间，单位毫秒。数值越小滑动越快，越大越慢。无障碍与 Shizuku 两种方式均生效。";
+    private static final String INFO_DURATION_MIN = "单次滑动时长的随机下限，单位毫秒。数值越小滑动越快。与「时长上限」相等时即为固定时长。";
+    private static final String INFO_DURATION_MAX = "单次滑动时长的随机上限，单位毫秒。每次滑动都会在「下限 ~ 上限」之间随机取一个时长，让快慢也带自然的起伏。";
     private static final String INFO_INTERVAL = "未开启「间隔随机」时，连续两次滑动之间的固定等待时间，单位毫秒。开启「间隔随机」后将在最小~最大之间随机取值。";
     private static final String INFO_INTERVAL_MIN = "开启「间隔随机」后，两次滑动之间间隔的下限，单位毫秒。";
     private static final String INFO_INTERVAL_MAX = "开启「间隔随机」后，两次滑动之间间隔的上限，单位毫秒。每次循环都会在此区间内随机取值，让节奏不固定。";
@@ -210,21 +213,30 @@ public class MainActivity extends Activity {
         etAngle = addField(root, "角度 · 0–359（0右 90下 180左 270上）", "90", INFO_ANGLE);
         etDistMin = addField(root, "距离下限 · 1–4000 dp", "300", INFO_DIST_MIN);
         etDistMax = addField(root, "距离上限 · 1–4000 dp", "500", INFO_DIST_MAX);
-        etDuration = addField(root, "滑动时长 · 50–60000 ms（越小越快）", "500", INFO_DURATION);
+        etDurationMin = addField(root, "时长下限 · 50–60000 ms（越小越快）", "400", INFO_DURATION_MIN);
+        etDurationMax = addField(root, "时长上限 · 50–60000 ms（与下限相同即固定）", "700", INFO_DURATION_MAX);
         etInterval = addField(root, "间隔（固定）· 0–600000 ms", "500", INFO_INTERVAL);
 
         cbIntervalRandom = new CheckBox(this);
         cbIntervalRandom.setText("间隔随机：每次在最小~最大之间随机取值");
-        cbIntervalRandom.setOnCheckedChangeListener((b, v) -> refreshIntervalFieldsEnabled());
+        cbIntervalRandom.setOnCheckedChangeListener((b, v) -> refreshConditionalFields());
         root.addView(cbIntervalRandom);
-        etIntervalMin = addField(root, "最小间隔 · 0–600000 ms", "200", INFO_INTERVAL_MIN);
-        etIntervalMax = addField(root, "最大间隔 · 0–600000 ms", "800", INFO_INTERVAL_MAX);
+        // 未勾选「间隔随机」时整组折叠
+        llIntervalRandom = new LinearLayout(this);
+        llIntervalRandom.setOrientation(LinearLayout.VERTICAL);
+        root.addView(llIntervalRandom, fullWidth(llIntervalRandom));
+        etIntervalMin = addField(llIntervalRandom, "最小间隔 · 0–600000 ms", "200", INFO_INTERVAL_MIN);
+        etIntervalMax = addField(llIntervalRandom, "最大间隔 · 0–600000 ms", "800", INFO_INTERVAL_MAX);
 
         cbRoundTrip = new CheckBox(this);
         cbRoundTrip.setText("往返滑动（到终点后滑回起点）");
-        cbRoundTrip.setOnCheckedChangeListener((b, v) -> refreshPreview());
+        cbRoundTrip.setOnCheckedChangeListener((b, v) -> refreshConditionalFields());
         root.addView(cbRoundTrip);
-        etPause = addField(root, "往返停顿 · 0–60000 ms", "200", INFO_PAUSE);
+        // 未勾选「往返滑动」时折叠「往返停顿」
+        llRoundTrip = new LinearLayout(this);
+        llRoundTrip.setOrientation(LinearLayout.VERTICAL);
+        root.addView(llRoundTrip, fullWidth(llRoundTrip));
+        etPause = addField(llRoundTrip, "往返停顿 · 0–60000 ms", "200", INFO_PAUSE);
         etCurve = addField(root, "弯曲幅度 · -2000～2000 dp（0=直线）", "0", INFO_CURVE);
         etLoops = addField(root, "循环次数 · 0–1000000（0=无限）", "0", INFO_LOOPS);
         etMaxDur = addField(root, "运行时长上限 · 0–86400 秒（0=不限）", "0", INFO_MAX_DUR);
@@ -233,8 +245,7 @@ public class MainActivity extends Activity {
         // 预览随参数实时刷新
         watch(etX); watch(etY); watch(etAngle); watch(etDistMin); watch(etDistMax);
         watch(etCurve); watch(etJitter);
-        refreshIntervalFieldsEnabled();
-        refreshPreview();
+        refreshConditionalFields();
 
         addSection(root, "录制滑动序列（真人轨迹回放）");
         LinearLayout recordToggleRow = new LinearLayout(this);
@@ -604,7 +615,11 @@ public class MainActivity extends Activity {
         if (c.distanceMaxDp < c.distanceMinDp) {
             float t = c.distanceMinDp; c.distanceMinDp = c.distanceMaxDp; c.distanceMaxDp = t;
         }
-        c.durationMs = clampL((long) parseLong(etDuration, c.durationMs), 50L, 60000L);
+        c.durationMinMs = clampL((long) parseLong(etDurationMin, c.durationMinMs), 50L, 60000L);
+        c.durationMaxMs = clampL((long) parseLong(etDurationMax, c.durationMaxMs), 50L, 60000L);
+        if (c.durationMaxMs < c.durationMinMs) {
+            long t = c.durationMinMs; c.durationMinMs = c.durationMaxMs; c.durationMaxMs = t;
+        }
         c.intervalMs = clampL((long) parseLong(etInterval, c.intervalMs), 0L, 600000L);
         c.intervalRandom = cbIntervalRandom.isChecked();
         c.intervalMinMs = clampL(parseLong(etIntervalMin, c.intervalMinMs), 0L, 600000L);
@@ -632,19 +647,20 @@ public class MainActivity extends Activity {
     }
 
     private void showSaveAsDialog() {
-        final String[] items = new String[]{"槽 1", "槽 2", "槽 3"};
+        final String[] items = new String[]{slotLabel(1), slotLabel(2), slotLabel(3)};
         new AlertDialog.Builder(this)
                 .setTitle("另存到槽位")
                 .setItems(items, (d, which) -> {
                     SwipeConfigStore.saveSlot(this, which + 1, collectConfig());
-                    Toast.makeText(this, "已另存到槽 " + (which + 1), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "已另存到槽 " + (which + 1) + "（已存储）",
+                            Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("取消", null)
                 .show();
     }
 
     private void showLoadDialog() {
-        final String[] items = new String[]{"槽 1", "槽 2", "槽 3"};
+        final String[] items = new String[]{slotLabel(1), slotLabel(2), slotLabel(3)};
         new AlertDialog.Builder(this)
                 .setTitle("读取槽位")
                 .setItems(items, (d, which) -> {
@@ -656,13 +672,19 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    /** 槽位在弹窗里的显示名：已保存过的标记「已存储」，方便区分。 */
+    private String slotLabel(int slot) {
+        return "槽 " + slot + (SwipeConfigStore.hasSlot(this, slot) ? "（已存储）" : "（空）");
+    }
+
     private void applyConfigToUi(SwipeConfig c) {
         etX.setText(fmtNum(c.xPercent));
         etY.setText(fmtNum(c.yPercent));
         etAngle.setText(fmtNum(c.angle));
         etDistMin.setText(fmtNum(c.distanceMinDp));
         etDistMax.setText(fmtNum(c.distanceMaxDp));
-        etDuration.setText(String.valueOf(c.durationMs));
+        etDurationMin.setText(String.valueOf(c.durationMinMs));
+        etDurationMax.setText(String.valueOf(c.durationMaxMs));
         etInterval.setText(String.valueOf(c.intervalMs));
         etLoops.setText(String.valueOf(c.loops));
         cbRoundTrip.setChecked(c.roundTrip);
@@ -684,7 +706,7 @@ public class MainActivity extends Activity {
         } else {
             rbA11y.setChecked(true);
         }
-        refreshIntervalFieldsEnabled();
+        refreshConditionalFields();
         refreshPreview();
     }
 
@@ -784,7 +806,7 @@ public class MainActivity extends Activity {
         root.addView(tv);
     }
 
-    private EditText addField(LinearLayout root, String label, String def, String info) {
+    private EditText addField(ViewGroup root, String label, String def, String info) {
         // 标签行：左侧名称（含取值范围），右侧可点击的「!」提示图标
         LinearLayout labelRow = new LinearLayout(this);
         labelRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -849,13 +871,20 @@ public class MainActivity extends Activity {
         mPreview.update(x, y, ang, dist, curve, cbRoundTrip.isChecked(), jitter);
     }
 
-    /** 根据「间隔随机」开关启用/禁用相关输入框。 */
-    private void refreshIntervalFieldsEnabled() {
+    /** 根据复选框状态折叠/展开依赖的分组，并刷新相关输入框可用性。 */
+    private void refreshConditionalFields() {
         if (cbIntervalRandom == null) return;
-        boolean rnd = cbIntervalRandom.isChecked();
-        etInterval.setEnabled(!rnd);
-        etIntervalMin.setEnabled(rnd);
-        etIntervalMax.setEnabled(rnd);
+        boolean rndInterval = cbIntervalRandom.isChecked();
+        if (llIntervalRandom != null) {
+            llIntervalRandom.setVisibility(rndInterval ? View.VISIBLE : View.GONE);
+        }
+        etInterval.setEnabled(!rndInterval);
+        etIntervalMin.setEnabled(rndInterval);
+        etIntervalMax.setEnabled(rndInterval);
+        if (llRoundTrip != null && cbRoundTrip != null) {
+            llRoundTrip.setVisibility(cbRoundTrip.isChecked() ? View.VISIBLE : View.GONE);
+        }
+        refreshPreview();
     }
 
     private LinearLayout.LayoutParams fullWidth(View v) {

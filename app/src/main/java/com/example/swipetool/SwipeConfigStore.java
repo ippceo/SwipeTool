@@ -43,6 +43,12 @@ public final class SwipeConfigStore {
         return "s" + slot + "_";
     }
 
+    /** 某个槽位是否已经保存过配置（用于「另存 / 读取」里标记「已存储」）。 */
+    public static boolean hasSlot(Context ctx, int slot) {
+        return ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+                .contains(prefix(slot) + KEY_VERSION);
+    }
+
     // ---------- 内部实现 ----------
 
     private static void saveTo(Context ctx, SwipeConfig c, String p) {
@@ -52,7 +58,9 @@ public final class SwipeConfigStore {
                 .putFloat(p + "angle", c.angle)
                 .putFloat(p + "distanceMinDp", c.distanceMinDp)
                 .putFloat(p + "distanceMaxDp", c.distanceMaxDp)
-                .putLong(p + "durationMs", c.durationMs)
+                .putLong(p + "durationMs", (c.durationMinMs + c.durationMaxMs) / 2L)
+                .putLong(p + "durationMinMs", c.durationMinMs)
+                .putLong(p + "durationMaxMs", c.durationMaxMs)
                 .putLong(p + "intervalMs", c.intervalMs)
                 .putBoolean(p + "intervalRandom", c.intervalRandom)
                 .putLong(p + "intervalMinMs", c.intervalMinMs)
@@ -94,7 +102,15 @@ public final class SwipeConfigStore {
             c.distanceMinDp = sp.getFloat(p + "distanceMinDp", c.distanceMinDp);
             c.distanceMaxDp = sp.getFloat(p + "distanceMaxDp", c.distanceMaxDp);
         }
-        c.durationMs = sp.getLong(p + "durationMs", c.durationMs);
+        // 旧版本只有一个固定时长：迁移为固定区间（下限 = 上限），保持原有手感。
+        long legacyDuration = sp.getLong(p + "durationMs", -1L);
+        if (legacyDuration > 0L) {
+            c.durationMinMs = sp.getLong(p + "durationMinMs", legacyDuration);
+            c.durationMaxMs = sp.getLong(p + "durationMaxMs", legacyDuration);
+        } else {
+            c.durationMinMs = sp.getLong(p + "durationMinMs", c.durationMinMs);
+            c.durationMaxMs = sp.getLong(p + "durationMaxMs", c.durationMaxMs);
+        }
         c.intervalMs = sp.getLong(p + "intervalMs", c.intervalMs);
         c.intervalRandom = sp.getBoolean(p + "intervalRandom", c.intervalRandom);
         c.intervalMinMs = sp.getLong(p + "intervalMinMs", c.intervalMinMs);

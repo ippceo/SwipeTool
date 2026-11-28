@@ -68,11 +68,12 @@ public class SwipeAccessibilityService extends AccessibilityService {
                 return;
             }
             // 一次完整循环耗时：往返时含去程+停顿+回程；录制序列则取该序列总时长。
+            long fallbackDuration = SwipeConfig.resolveDuration(mConfig);
             long gestureSpan = mLastGestureSpanMs > 0L
                     ? mLastGestureSpanMs
                     : (mConfig.roundTrip
-                    ? (mConfig.durationMs * 2L + mConfig.pauseMs)
-                    : mConfig.durationMs);
+                    ? (fallbackDuration * 2L + mConfig.pauseMs)
+                    : fallbackDuration);
             // 间隔：固定值，或在「最小~最大」之间随机（再叠加抖动扰动）
             long interval = SwipeConfig.resolveInterval(mConfig);
             long cycle = gestureSpan + interval + 50L; // 50ms 余量，避免手势重叠
@@ -166,20 +167,22 @@ public class SwipeAccessibilityService extends AccessibilityService {
         Random random = new Random();
         SwipeTrajectory trajectory = SwipeTrajectory.generate(
                 c, dm.widthPixels, dm.heightPixels, dm.density, random);
+        // 本次滑动的时长在「下限 ~ 上限」之间随机（相等时即固定）
+        long duration = SwipeConfig.resolveDuration(c);
 
         GestureDescription.Builder builder = new GestureDescription.Builder();
         if (c.roundTrip) {
             // 去程 + 回程，回程在去程结束后再开始
             builder.addStroke(new GestureDescription.StrokeDescription(
-                    trajectory.buildPath(random, false), 0, c.durationMs));
-            long returnStart = c.durationMs + c.pauseMs;
+                    trajectory.buildPath(random, false), 0, duration));
+            long returnStart = duration + c.pauseMs;
             builder.addStroke(new GestureDescription.StrokeDescription(
-                    trajectory.buildPath(random, true), returnStart, c.durationMs));
-            mLastGestureSpanMs = c.durationMs * 2L + c.pauseMs;
+                    trajectory.buildPath(random, true), returnStart, duration));
+            mLastGestureSpanMs = duration * 2L + c.pauseMs;
         } else {
             builder.addStroke(new GestureDescription.StrokeDescription(
-                    trajectory.buildPath(random, false), 0, c.durationMs));
-            mLastGestureSpanMs = c.durationMs;
+                    trajectory.buildPath(random, false), 0, duration));
+            mLastGestureSpanMs = duration;
         }
 
         return dispatchGesture(builder.build(), null, mHandler);

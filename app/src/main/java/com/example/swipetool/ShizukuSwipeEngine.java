@@ -137,9 +137,11 @@ public final class ShizukuSwipeEngine {
             }
             final SwipeConfig c = sConfig;
             final int[] p = computeCoords(c);
+            // 本次滑动的时长在「下限 ~ 上限」之间随机（相等时即固定）
+            final long duration = SwipeConfig.resolveDuration(c);
             sExecutor.execute(() -> {
                 try {
-                    sService.swipe(p[0], p[1], p[2], p[3], (int) c.durationMs);
+                    sService.swipe(p[0], p[1], p[2], p[3], (int) duration);
                 } catch (Throwable ignored) {
                 }
                 sHandler.post(() -> {
@@ -149,7 +151,7 @@ public final class ShizukuSwipeEngine {
                         stop();
                         return;
                     }
-                    long span = c.roundTrip ? (c.durationMs * 2L + c.pauseMs) : c.durationMs;
+                    long span = c.roundTrip ? (duration * 2L + c.pauseMs) : duration;
                     // 间隔：固定值，或在「最小~最大」之间随机（再叠加抖动扰动）
                     long interval = SwipeConfig.resolveInterval(c);
                     sHandler.postDelayed(sTask, span + interval + 50L);
