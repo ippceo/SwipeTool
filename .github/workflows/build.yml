@@ -45,30 +45,49 @@ jobs:
 
       - name: Decode signing keystore
         env:
+          KEYSTORE_BLOB: ${{ secrets.KEYSTORE_BLOB }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS_SECRET: ${{ secrets.KEY_ALIAS }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          # 优先使用合并密钥 KEYSTORE_BLOB：格式为 password|alias|base64(单行)
+          if [ -n "$KEYSTORE_BLOB" ]; then
+            PASS="${KEYSTORE_BLOB%%|*}"
+            REST="${KEYSTORE_BLOB#*|}"
+            ALIAS="${REST%%|*}"
+            B64="${REST#*|}"
+            echo "使用 KEYSTORE_BLOB 合并密钥。"
+          else
+            B64="$KEYSTORE_BASE64"
+            PASS="$KEYSTORE_PASSWORD"
+            ALIAS="$KEY_ALIAS_SECRET"
+            echo "使用分离的 Secret。"
+          fi
+          PASS=$(printf '%s' "$PASS" | tr -d '[:space:]')
+          ALIAS=$(printf '%s' "$ALIAS" | tr -d '[:space:]')
+          B64=$(printf '%s' "$B64" | tr -d '[:space:]')
+          if [ -n "$B64" ]; then
+            printf '%s' "$B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            {
+              echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks"
+              echo "KEYSTORE_PASSWORD=$PASS"
+              echo "KEY_ALIAS=$ALIAS"
+              echo "KEY_PASSWORD=$PASS"
+            } >> "$GITHUB_ENV"
             echo "decoded size: $(wc -c < "$RUNNER_TEMP/release.jks") (expect 2638)"
             echo "decoded sha256: $(sha256sum "$RUNNER_TEMP/release.jks" | awk '{print $1}')"
             echo "expect sha256: c9bea98b768c4d624052bbbf3e76c4252c56d0eb77fe4a6c2abd35b385e7fbf3"
-            PASS=$(printf '%s' "$KEYSTORE_PASSWORD" | tr -d '[:space:]')
+            echo "password length: ${#PASS} (expect 20)"
             if keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$PASS" >/dev/null 2>&1; then
               echo "keystore password OK"
             else
               echo "keystore password FAILED (密码不对，或 keystore 文件损坏/被截断)"
             fi
           else
-            echo "未配置 KEYSTORE_BASE64，release 将回退 debug 签名（版本间签名会不一致）。"
+            echo "未配置签名密钥，release 将回退 debug 签名（版本间签名会不一致）。"
           fi
 
       - name: Build APKs (debug + release)
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: gradle assembleDebug assembleRelease --no-daemon --stacktrace
 
       - name: Upload debug APK
