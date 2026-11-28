@@ -23,10 +23,11 @@ android {
         // 这样每次构建用同一把密钥，版本之间签名一致，可直接覆盖升级。
         if (System.getenv("KEYSTORE_FILE")) {
             release {
-                storeFile file(System.getenv("KEYSTORE_FILE"))
-                storePassword System.getenv("KEYSTORE_PASSWORD")
-                keyAlias System.getenv("KEY_ALIAS")
-                keyPassword System.getenv("KEY_PASSWORD")
+                // 统一 trim，避免 Secret 值带尾随空格 / 换行导致「密码不正确」
+                storeFile file(System.getenv("KEYSTORE_FILE").trim())
+                storePassword System.getenv("KEYSTORE_PASSWORD").trim()
+                keyAlias System.getenv("KEY_ALIAS").trim()
+                keyPassword System.getenv("KEY_PASSWORD").trim()
             }
         }
     }
