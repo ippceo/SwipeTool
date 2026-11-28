@@ -10,12 +10,8 @@ android {
         applicationId "com.example.swipetool"
         minSdk 24
         targetSdk 34
-        versionCode 13
-        versionName "1.7.3"
-    }
-
-    buildFeatures {
-        aidl true
+        versionCode 14
+        versionName "1.8.0"
     }
 
     signingConfigs {
@@ -34,8 +30,7 @@ android {
 
     buildTypes {
         release {
-            // R8 混淆 + 资源压缩：release APK 由 ~74KB 降到 ~47KB。
-            // 已为 Shizuku UserService / AIDL 保留必要类，详见 proguard-rules.pro。
+            // R8 混淆 + 资源压缩，减小 release APK 体积。
             minifyEnabled true
             shrinkResources true
             // 有固定 keystore 用它签名（保证版本间签名一致、可覆盖升级）；
@@ -52,15 +47,10 @@ android {
     }
 
     lint {
-        // Shizuku 的 provider 需要引用系统权限 INTERACT_ACROSS_USERS_FULL，
-        // 关闭 release 的 lint 阻断，避免误判导致构建失败。
         checkReleaseBuilds false
         abortOnError false
     }
 }
 
 dependencies {
-    // Shizuku：可选的执行方式，通过 shell(ADB) 权限运行 input swipe
-    implementation "dev.rikka.shizuku:api:13.1.5"
-    implementation "dev.rikka.shizuku:provider:13.1.5"
 }

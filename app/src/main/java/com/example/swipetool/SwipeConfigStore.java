@@ -2,6 +2,7 @@ package com.example.swipetool;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.DisplayMetrics;
 
 /**
  * 把滑动参数持久化到 SharedPreferences。
@@ -11,10 +12,9 @@ import android.content.SharedPreferences;
 public final class SwipeConfigStore {
 
     private static final String PREF = "swipe_config";
-    /** 版本号按槽位存储，避免「另存到别的槽」把默认槽的迁移标记提前置位。
-     *  使用新键名，避开 1.6.0 曾写过的全局 configVersion。 */
+    /** 版本号按槽位存储，避免「另存到别的槽」把默认槽的迁移标记提前置位。 */
     private static final String KEY_VERSION = "slotConfigVersion";
-    private static final int CONFIG_VERSION = 2;
+    private static final int CONFIG_VERSION = 3;
 
     private SwipeConfigStore() {
     }
@@ -53,12 +53,13 @@ public final class SwipeConfigStore {
 
     private static void saveTo(Context ctx, SwipeConfig c, String p) {
         ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
-                .putFloat(p + "xPercent", c.xPercent)
-                .putFloat(p + "yPercent", c.yPercent)
+                .putFloat(p + "xMinPercent", c.xMinPercent)
+                .putFloat(p + "xMaxPercent", c.xMaxPercent)
+                .putFloat(p + "yMinPercent", c.yMinPercent)
+                .putFloat(p + "yMaxPercent", c.yMaxPercent)
                 .putFloat(p + "angle", c.angle)
-                .putFloat(p + "distanceMinDp", c.distanceMinDp)
-                .putFloat(p + "distanceMaxDp", c.distanceMaxDp)
-                .putLong(p + "durationMs", (c.durationMinMs + c.durationMaxMs) / 2L)
+                .putFloat(p + "distanceMinPercent", c.distanceMinPercent)
+                .putFloat(p + "distanceMaxPercent", c.distanceMaxPercent)
                 .putLong(p + "durationMinMs", c.durationMinMs)
                 .putLong(p + "durationMaxMs", c.durationMaxMs)
                 .putLong(p + "intervalMs", c.intervalMs)
@@ -69,12 +70,12 @@ public final class SwipeConfigStore {
                 .putBoolean(p + "roundTrip", c.roundTrip)
                 .putLong(p + "pauseMs", c.pauseMs)
                 .putFloat(p + "curveDp", c.curveDp)
-                .putBoolean(p + "useShizuku", c.useShizuku)
                 .putLong(p + "maxDurationSec", c.maxDurationSec)
                 .putFloat(p + "jitterPercent", c.jitterPercent)
                 .putBoolean(p + "useRecorded", c.useRecorded)
                 .putString(p + "recordedId", c.recordedId)
                 .putString(p + "recordedName", c.recordedName)
+                .putInt(p + "startDelaySec", c.startDelaySec)
                 .putInt(p + KEY_VERSION, CONFIG_VERSION)
                 .apply();
     }
@@ -83,30 +84,60 @@ public final class SwipeConfigStore {
         SharedPreferences sp = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE);
         SwipeConfig c = new SwipeConfig();
         int version = sp.getInt(p + KEY_VERSION, 0);
-        // 1.6.0 已经保存过的槽位会带有 distanceMinDp，说明用户明确保存过，
-        // 不再强制改写其抖动值（尊重用户主动设为 0 的选择）。
-        boolean savedByNewFormat = sp.contains(p + "distanceMinDp");
+        DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
+        float screenHeightDp = dm.density > 0f ? dm.heightPixels / dm.density : 800f;
 
-        c.xPercent = sp.getFloat(p + "xPercent", c.xPercent);
-        c.yPercent = sp.getFloat(p + "yPercent", c.yPercent);
-        c.angle = sp.getFloat(p + "angle", c.angle);
-        // 旧版本只有一个固定距离：迁移成该值 ±20% 的随机区间，
-        // 既保留用户原来的长度量级，又能直接看到长度随机效果。
-        float legacyDistance = sp.getFloat(p + "distanceDp", -1f);
-        if (legacyDistance > 0f) {
-            float lo = Math.max(1f, legacyDistance * 0.8f);
-            float hi = Math.max(lo, legacyDistance * 1.2f);
-            c.distanceMinDp = sp.getFloat(p + "distanceMinDp", lo);
-            c.distanceMaxDp = sp.getFloat(p + "distanceMaxDp", hi);
+        // 起点：1.8.0 之前是单值 xPercent / yPercent，迁移成「下限 = 上限 = 旧值」，
+        // 既保留原来的位置，又能在新界面上直接看到「区间」输入。
+        if (sp.contains(p + "xMinPercent")) {
+            c.xMinPercent = sp.getFloat(p + "xMinPercent", c.xMinPercent);
+            c.xMaxPercent = sp.getFloat(p + "xMaxPercent", c.xMaxPercent);
         } else {
-            c.distanceMinDp = sp.getFloat(p + "distanceMinDp", c.distanceMinDp);
-            c.distanceMaxDp = sp.getFloat(p + "distanceMaxDp", c.distanceMaxDp);
+            float legacyX = sp.getFloat(p + "xPercent", c.xMinPercent);
+            c.xMinPercent = legacyX;
+            c.xMaxPercent = legacyX;
         }
-        // 旧版本只有一个固定时长：迁移为固定区间（下限 = 上限），保持原有手感。
+        if (sp.contains(p + "yMinPercent")) {
+            c.yMinPercent = sp.getFloat(p + "yMinPercent", c.yMinPercent);
+            c.yMaxPercent = sp.getFloat(p + "yMaxPercent", c.yMaxPercent);
+        } else {
+            float legacyY = sp.getFloat(p + "yPercent", c.yMinPercent);
+            c.yMinPercent = legacyY;
+            c.yMaxPercent = legacyY;
+        }
+
+        c.angle = sp.getFloat(p + "angle", c.angle);
+
+        // 距离：1.8.0 之前单位是 dp（distanceMinDp / distanceMaxDp，更早是 distanceDp），
+        // 迁移成「屏高百分比」：percent = oldDp / 屏幕高度(dp) * 100，钳到合理范围，
+        // 保证升级后滑动长度体感与原来接近。
+        if (sp.contains(p + "distanceMinPercent")) {
+            c.distanceMinPercent = sp.getFloat(p + "distanceMinPercent", c.distanceMinPercent);
+            c.distanceMaxPercent = sp.getFloat(p + "distanceMaxPercent", c.distanceMaxPercent);
+        } else {
+            float legacyDistance = sp.getFloat(p + "distanceDp", -1f);
+            float loDp, hiDp;
+            if (legacyDistance > 0f) {
+                loDp = Math.max(1f, legacyDistance * 0.8f);
+                hiDp = Math.max(loDp, legacyDistance * 1.2f);
+            } else {
+                loDp = sp.getFloat(p + "distanceMinDp", c.distanceMinPercent);
+                hiDp = sp.getFloat(p + "distanceMaxDp", c.distanceMaxPercent);
+            }
+            c.distanceMinPercent = clampPercent(loDp / screenHeightDp * 100f);
+            c.distanceMaxPercent = clampPercent(hiDp / screenHeightDp * 100f);
+            if (c.distanceMaxPercent < c.distanceMinPercent) {
+                float t = c.distanceMinPercent;
+                c.distanceMinPercent = c.distanceMaxPercent;
+                c.distanceMaxPercent = t;
+            }
+        }
+
+        // 时长：旧版本只有一个固定时长 durationMs，迁移为固定区间（下限 = 上限）。
         long legacyDuration = sp.getLong(p + "durationMs", -1L);
-        if (legacyDuration > 0L) {
-            c.durationMinMs = sp.getLong(p + "durationMinMs", legacyDuration);
-            c.durationMaxMs = sp.getLong(p + "durationMaxMs", legacyDuration);
+        if (legacyDuration > 0L && !sp.contains(p + "durationMinMs")) {
+            c.durationMinMs = legacyDuration;
+            c.durationMaxMs = legacyDuration;
         } else {
             c.durationMinMs = sp.getLong(p + "durationMinMs", c.durationMinMs);
             c.durationMaxMs = sp.getLong(p + "durationMaxMs", c.durationMaxMs);
@@ -119,17 +150,25 @@ public final class SwipeConfigStore {
         c.roundTrip = sp.getBoolean(p + "roundTrip", c.roundTrip);
         c.pauseMs = sp.getLong(p + "pauseMs", c.pauseMs);
         c.curveDp = sp.getFloat(p + "curveDp", c.curveDp);
-        c.useShizuku = sp.getBoolean(p + "useShizuku", c.useShizuku);
         c.maxDurationSec = sp.getLong(p + "maxDurationSec", c.maxDurationSec);
         c.jitterPercent = sp.getFloat(p + "jitterPercent", c.jitterPercent);
         c.useRecorded = sp.getBoolean(p + "useRecorded", c.useRecorded);
         c.recordedId = sp.getString(p + "recordedId", c.recordedId);
         c.recordedName = sp.getString(p + "recordedName", c.recordedName);
+        c.startDelaySec = sp.getInt(p + "startDelaySec", c.startDelaySec);
 
         // 旧版本默认不抖动，升级后给一个明显可见的默认随机强度
-        if (version < CONFIG_VERSION && !savedByNewFormat && c.jitterPercent <= 0f) {
+        boolean savedByNewFormat = sp.contains(p + "distanceMinPercent");
+        if (version < 2 && !savedByNewFormat && c.jitterPercent <= 0f) {
             c.jitterPercent = SwipeConfig.DEFAULT_JITTER;
         }
         return c;
+    }
+
+    /** 把屏高百分比钳到 [1, 95]，避免迁移后出现 0 或超出屏幕的离谱值。 */
+    private static float clampPercent(float v) {
+        if (v < 1f) return 1f;
+        if (v > 95f) return 95f;
+        return v;
     }
 }

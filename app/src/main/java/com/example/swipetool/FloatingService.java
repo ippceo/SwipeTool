@@ -51,6 +51,13 @@ public class FloatingService extends Service {
     private boolean mRunning = false;
     private ValueAnimator mEdgeAnimator;
 
+    /** 悬浮球服务是否正在运行（供主界面判断是否需要重复拉起）。 */
+    private static boolean sRunning = false;
+
+    public static boolean isRunning() {
+        return sRunning;
+    }
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
@@ -61,6 +68,7 @@ public class FloatingService extends Service {
         String action = intent == null ? null : intent.getAction();
 
         if (ACTION_STOP.equals(action)) {
+            sRunning = false;
             stopSwipe();
             removeBall();
             stopForegroundCompat();
@@ -74,6 +82,7 @@ public class FloatingService extends Service {
         if (mBall == null) {
             showBall();
         }
+        sRunning = true;
         if (ACTION_TOGGLE.equals(action)) {
             toggle();
         }
@@ -82,6 +91,7 @@ public class FloatingService extends Service {
 
     @Override
     public void onDestroy() {
+        sRunning = false;
         stopSwipe();
         removeBall();
         super.onDestroy();
@@ -286,35 +296,18 @@ public class FloatingService extends Service {
 
     private void startSwipe() {
         SwipeConfig c = SwipeConfigStore.load(this);
-
-        if (c.useShizuku) {
-            if (!ShizukuSwipeEngine.isAvailable()) {
-                Toast.makeText(this, "Shizuku 未运行，请先启动 Shizuku", Toast.LENGTH_LONG).show();
-                return;
-            }
-            if (!ShizukuSwipeEngine.hasPermission()) {
-                Toast.makeText(this, "Shizuku 未授权，请先在 App 内授权", Toast.LENGTH_LONG).show();
-                return;
-            }
-            ShizukuSwipeEngine.bind(this);
-            ShizukuSwipeEngine.start(c);
-            mRunning = true;
-        } else {
-            if (!SwipeAccessibilityService.isConnected()) {
-                Toast.makeText(this, "无障碍服务未连接，请先开启无障碍权限", Toast.LENGTH_LONG).show();
-                return;
-            }
-            SwipeAccessibilityService.start(c);
-            mRunning = true;
+        if (!SwipeAccessibilityService.isConnected()) {
+            Toast.makeText(this, "无障碍服务未连接，请先开启无障碍权限", Toast.LENGTH_LONG).show();
+            return;
         }
-
+        SwipeAccessibilityService.start(c);
+        mRunning = true;
         updateBallLook();
         updateNotification();
     }
 
     private void stopSwipe() {
         SwipeAccessibilityService.stop();
-        ShizukuSwipeEngine.stop();
         mRunning = false;
         updateBallLook();
         updateNotification();

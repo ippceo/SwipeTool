@@ -53,8 +53,10 @@ final class SwipeTrajectory {
         float strength = clamp(c.jitterPercent / 100f, 0f, 1f);
         float minSide = Math.min(width, height);
 
-        float sx = width * (c.xPercent / 100f);
-        float sy = height * (c.yPercent / 100f);
+        // 起点在「下限 ~ 上限」区间内随机（屏宽 / 屏高百分比）；
+        // 再叠加抖动带来的微偏移，让固定区间时也有轻微浮动。
+        float sx = width * (SwipeConfig.resolveStartX(c) / 100f);
+        float sy = height * (SwipeConfig.resolveStartY(c) / 100f);
         if (strength > 0f) {
             sx += signed(random) * strength * minSide * START_SHIFT_RATIO;
             sy += signed(random) * strength * minSide * START_SHIFT_RATIO;
@@ -62,9 +64,8 @@ final class SwipeTrajectory {
         sx = clamp(sx, 1f, width - 1f);
         sy = clamp(sy, 1f, height - 1f);
 
-        float minDp = Math.max(1f, Math.min(c.distanceMinDp, c.distanceMaxDp));
-        float maxDp = Math.max(minDp, Math.max(c.distanceMinDp, c.distanceMaxDp));
-        float distancePx = (minDp + random.nextFloat() * (maxDp - minDp)) * density;
+        // 长度按「屏高百分比」换算成像素，与屏幕大小成正比，不同手机体感一致。
+        float distancePx = SwipeConfig.resolveDistancePercent(c) / 100f * height;
 
         float angle = c.angle;
         if (strength > 0f) {

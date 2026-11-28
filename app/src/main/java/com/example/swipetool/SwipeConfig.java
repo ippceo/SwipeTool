@@ -3,21 +3,29 @@ package com.example.swipetool;
 /**
  * 滑动参数配置。所有滑动都基于屏幕绝对坐标的触摸事件模拟，
  * 不涉及任何平台检测绕过逻辑。
+ *
+ * 距离与起点都以「屏幕比例」表达：起点按屏宽 / 屏高百分比定位，
+ * 滑动长度按屏高百分比取值，避免在不同分辨率 / 密度的手机上出现
+ * 「同一个 dp 值长度体感差很多」的问题。
  */
 public class SwipeConfig {
     /** 默认随机抖动强度（%）。升级自旧版本时会用它替代原来默认的 0。 */
     public static final float DEFAULT_JITTER = 40f;
 
-    /** 起点横坐标，屏幕宽度百分比 0-100 */
-    public float xPercent = 50f;
-    /** 起点纵坐标，屏幕高度百分比 0-100 */
-    public float yPercent = 50f;
+    /** 起点横坐标随机下限，屏幕宽度百分比 0-100；与上限相等即固定 X */
+    public float xMinPercent = 50f;
+    /** 起点横坐标随机上限，屏幕宽度百分比 0-100 */
+    public float xMaxPercent = 50f;
+    /** 起点纵坐标随机下限，屏幕高度百分比 0-100；与上限相等即固定 Y */
+    public float yMinPercent = 50f;
+    /** 起点纵坐标随机上限，屏幕高度百分比 0-100 */
+    public float yMaxPercent = 50f;
     /** 滑动角度：0=右, 90=下, 180=左, 270=上（屏幕坐标系，y 向下） */
     public float angle = 90f;
-    /** 距离随机下限，单位 dp */
-    public float distanceMinDp = 300f;
-    /** 距离随机上限，单位 dp；与下限相等即固定长度 */
-    public float distanceMaxDp = 500f;
+    /** 距离随机下限，单位为「屏幕高度百分比」0-100；与上限相等即固定长度 */
+    public float distanceMinPercent = 30f;
+    /** 距离随机上限，单位为「屏幕高度百分比」0-100 */
+    public float distanceMaxPercent = 50f;
     /** 单次滑动时长的随机下限，单位毫秒（越小越快） */
     public long durationMinMs = 400L;
     /** 单次滑动时长的随机上限，单位毫秒；与下限相等即固定时长 */
@@ -38,28 +46,54 @@ public class SwipeConfig {
     public long pauseMs = 200L;
     /** 轨迹弯曲幅度，单位 dp，0 表示直线 */
     public float curveDp = 0f;
-    /** 是否使用 Shizuku 执行（false = 无障碍服务） */
-    public boolean useShizuku = false;
     /** 运行时长上限，单位秒，0 表示不限制（到时自动停止） */
     public long maxDurationSec = 0L;
     /**
      * 随机抖动强度 0-100（%）：
      * 影响起点偏移、方向角、弯曲幅度与轨迹摆动，同时叠加到间隔上。
-     * 0 表示关闭这些随机，仅保留「距离下限~上限」的长度随机。
+     * 0 表示关闭这些随机，仅保留「距离下限~上限」的长度随机
+     * 与「起点下限~上限」的位置随机。
      */
     public float jitterPercent = DEFAULT_JITTER;
 
-    /** 是否使用「录制序列」回放，替代按参数生成的随机滑动（仅无障碍方式支持）。 */
+    /** 是否使用「录制序列」回放，替代按参数生成的随机滑动。 */
     public boolean useRecorded = false;
     /** 当前选用的录制序列 id；为空表示未选择。 */
     public String recordedId = "";
     /** 当前选用的录制序列名称，仅用于界面展示。 */
     public String recordedName = "";
 
+    /**
+     * 启动延迟（秒）：点主界面「开始滑动 / 试放」后等待 N 秒再真正执行，
+     * 方便用户切到目标应用。仅主界面按钮生效；悬浮球点击不延迟。
+     */
+    public int startDelaySec = 0;
+
     /** 返回 [min, max] 之间的随机浮点数。 */
     public static float rnd(float min, float max) {
         if (max <= min) return min;
         return min + (float) Math.random() * (max - min);
+    }
+
+    /** 解析本次滑动起点横坐标（屏宽百分比），在 [下限, 上限] 之间随机。 */
+    public static float resolveStartX(SwipeConfig c) {
+        float lo = Math.min(c.xMinPercent, c.xMaxPercent);
+        float hi = Math.max(c.xMinPercent, c.xMaxPercent);
+        return rnd(lo, hi);
+    }
+
+    /** 解析本次滑动起点纵坐标（屏高百分比），在 [下限, 上限] 之间随机。 */
+    public static float resolveStartY(SwipeConfig c) {
+        float lo = Math.min(c.yMinPercent, c.yMaxPercent);
+        float hi = Math.max(c.yMinPercent, c.yMaxPercent);
+        return rnd(lo, hi);
+    }
+
+    /** 解析本次滑动长度（屏高百分比），在 [下限, 上限] 之间随机。 */
+    public static float resolveDistancePercent(SwipeConfig c) {
+        float lo = Math.max(0f, Math.min(c.distanceMinPercent, c.distanceMaxPercent));
+        float hi = Math.max(lo, Math.max(c.distanceMinPercent, c.distanceMaxPercent));
+        return rnd(lo, hi);
     }
 
     /**
