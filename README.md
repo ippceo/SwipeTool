@@ -96,7 +96,7 @@
 
 - **推荐**：从 [Releases](https://github.com/ippceo/SwipeTool/releases) 下载最新的 `app-release.apk` 直接安装。
 - 也可从 [Actions](https://github.com/ippceo/SwipeTool/actions) 下载构建产物（debug / release APK）。
-- 均为 debug keystore 签名，个人安装即可用，需允许「未知来源安装」。
+- 均为统一的固定密钥签名（release 使用项目专用签名密钥），**同一签名**，版本之间可直接覆盖升级，不需要卸载。
 - 系统要求：Android 7.0（API 24）及以上。
 
 ---
@@ -166,7 +166,8 @@ A：调高「随机抖动」强度，或开启「间隔随机」。
 - 工作流：`.github/workflows/build.yml`
 - 触发：向 `master` / `main` 分支 push，推送 `v*` tag，或在 Actions 页面手动 `Run workflow`
 - 产物：`app/build/outputs/apk/debug/app-debug.apk` 与 `app/build/outputs/apk/release/app-release.apk`，分别上传为 artifact
-- 发布：**推送 `v*` tag** 时自动创建 GitHub Release 并附上 release APK（release 使用 debug keystore 签名，个人安装即可用）
+- 发布：**推送 `v*` tag** 时自动创建 GitHub Release 并附上 release APK
+- 签名：release 使用固定签名密钥。CI 通过 GitHub Secrets（`KEYSTORE_BASE64` / `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD`）注入；未配置时回退 debug 签名（版本间签名会不一致，仅供本地调试）
 - 环境：JDK 17 + 预装 Android SDK（`platforms;android-34`、`build-tools;34.0.0`）+ Gradle 8.7（构建时下载，不依赖 `gradle-wrapper.jar`）；依赖走阿里云 Maven 镜像，避免 Maven Central 限流
 
 ## 本地构建（可选）

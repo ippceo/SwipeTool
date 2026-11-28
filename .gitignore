@@ -9,3 +9,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# 签名密钥（切勿提交）
+*.jks
+*.keystore
+.ci-keystore*
+

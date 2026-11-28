@@ -10,20 +10,34 @@ android {
         applicationId "com.example.swipetool"
         minSdk 24
         targetSdk 34
-        versionCode 6
-        versionName "1.5"
+        versionCode 7
+        versionName "1.5.1"
     }
 
     buildFeatures {
         aidl true
     }
 
+    signingConfigs {
+        // 固定签名：仅当通过环境变量提供 keystore 时启用（CI 用 GitHub Secrets 注入）。
+        // 这样每次构建用同一把密钥，版本之间签名一致，可直接覆盖升级。
+        if (System.getenv("KEYSTORE_FILE")) {
+            release {
+                storeFile file(System.getenv("KEYSTORE_FILE"))
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
-            // 复用 AGP 自动生成的 debug keystore 为 release 签名，个人安装即可用。
-            // 若要正式发布到应用商店，请替换为自己的 keystore 并通过 GitHub Secrets 注入。
-            signingConfig signingConfigs.debug
+            // 有固定 keystore 用它签名（保证版本间签名一致、可覆盖升级）；
+            // 否则回退 debug 签名，方便本地无密钥构建。
+            signingConfig System.getenv("KEYSTORE_FILE")
+                    ? signingConfigs.release : signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
