@@ -74,14 +74,11 @@ jobs:
               echo "KEY_ALIAS=$ALIAS"
               echo "KEY_PASSWORD=$PASS"
             } >> "$GITHUB_ENV"
-            echo "decoded size: $(wc -c < "$RUNNER_TEMP/release.jks") (expect 2638)"
-            echo "decoded sha256: $(sha256sum "$RUNNER_TEMP/release.jks" | awk '{print $1}')"
-            echo "expect sha256: c9bea98b768c4d624052bbbf3e76c4252c56d0eb77fe4a6c2abd35b385e7fbf3"
-            echo "password length: ${#PASS} (expect 20)"
             if keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$PASS" >/dev/null 2>&1; then
-              echo "keystore password OK"
+              echo "签名密钥校验通过。"
             else
-              echo "keystore password FAILED (密码不对，或 keystore 文件损坏/被截断)"
+              echo "签名密钥校验失败（密码不对，或 keystore 损坏）。"
+              exit 1
             fi
           else
             echo "未配置签名密钥，release 将回退 debug 签名（版本间签名会不一致）。"
