@@ -1,5 +1,6 @@
 package com.example.swipetool;
 
+import android.animation.ValueAnimator;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -12,11 +13,13 @@ import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.IBinder;
+import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.Toast;
@@ -36,11 +39,17 @@ public class FloatingService extends Service {
     private static final String CHANNEL_ID = "floating_swipe";
     private static final int NOTIF_ID = 2001;
 
+    /** 松手时距左右边缘小于该值（dp）才贴边隐藏。 */
+    private static final int EDGE_SNAP_THRESHOLD_DP = 48;
+    /** 贴边后仍露出的宽度（dp），避免完全藏起来点不到。 */
+    private static final int EDGE_PEEK_DP = 24;
+
     private WindowManager mWindowManager;
     private FrameLayout mBall;        // 圆形外框：渐变背景 + 阴影
     private ImageView mBallIcon;      // 居中的播放 / 停止图标
     private WindowManager.LayoutParams mParams;
     private boolean mRunning = false;
+    private ValueAnimator mEdgeAnimator;
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -150,6 +159,7 @@ public class FloatingService extends Service {
             public boolean onTouch(View v, MotionEvent e) {
                 switch (e.getActionMasked()) {
                     case MotionEvent.ACTION_DOWN:
+                        cancelEdgeAnimation();
                         downRawX = e.getRawX();
                         downRawY = e.getRawY();
                         startX = mParams.x;
@@ -164,15 +174,15 @@ public class FloatingService extends Service {
                         }
                         mParams.x = startX + dx;
                         mParams.y = startY + dy;
-                        try {
-                            mWindowManager.updateViewLayout(mBall, mParams);
-                        } catch (Throwable ignored) {
-                        }
+                        updateBallLayout();
                         return true;
                     }
                     case MotionEvent.ACTION_UP:
                         if (!moved) {
                             toggle();
+                        } else {
+                            // 松手后若靠近左右边缘，贴边半隐藏（保留一小段可见）
+                            snapToEdgeIfNeeded();
                         }
                         return true;
                     default:
@@ -182,7 +192,79 @@ public class FloatingService extends Service {
         });
     }
 
+    private void updateBallLayout() {
+        if (mWindowManager == null || mBall == null || mParams == null) return;
+        try {
+            mWindowManager.updateViewLayout(mBall, mParams);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * 松手后贴边：靠近左侧只露右边一小段，靠近右侧只露左边一小段，
+     * 始终保留 {@link #EDGE_PEEK_DP} 宽可见，避免完全隐藏后点不到。
+     */
+    private void snapToEdgeIfNeeded() {
+        if (mWindowManager == null || mBall == null || mParams == null) return;
+
+        DisplayMetrics dm = new DisplayMetrics();
+        mWindowManager.getDefaultDisplay().getMetrics(dm);
+        int screenW = dm.widthPixels;
+        int screenH = dm.heightPixels;
+        int size = mParams.width;
+        int threshold = dp(EDGE_SNAP_THRESHOLD_DP);
+        int peek = Math.min(dp(EDGE_PEEK_DP), size / 2);
+
+        // 纵向先限制在屏幕内
+        mParams.y = Math.max(0, Math.min(mParams.y, screenH - size));
+
+        boolean nearLeft = mParams.x <= threshold;
+        boolean nearRight = mParams.x + size >= screenW - threshold;
+        if (nearLeft && nearRight) {
+            // 屏幕异常狭窄时取更近的一侧
+            nearLeft = mParams.x + size / 2 <= screenW / 2;
+            nearRight = !nearLeft;
+        }
+
+        if (nearLeft) {
+            animateBallTo(-size + peek);
+        } else if (nearRight) {
+            animateBallTo(screenW - peek);
+        } else {
+            mParams.x = Math.max(0, Math.min(mParams.x, screenW - size));
+            updateBallLayout();
+        }
+    }
+
+    /** 平滑移动到目标 X（贴边用）。 */
+    private void animateBallTo(final int targetX) {
+        if (mParams == null) return;
+        int startX = mParams.x;
+        if (startX == targetX) {
+            updateBallLayout();
+            return;
+        }
+        cancelEdgeAnimation();
+        mEdgeAnimator = ValueAnimator.ofInt(startX, targetX);
+        mEdgeAnimator.setDuration(180L);
+        mEdgeAnimator.setInterpolator(new DecelerateInterpolator());
+        mEdgeAnimator.addUpdateListener(a -> {
+            if (mParams == null) return;
+            mParams.x = (int) a.getAnimatedValue();
+            updateBallLayout();
+        });
+        mEdgeAnimator.start();
+    }
+
+    private void cancelEdgeAnimation() {
+        if (mEdgeAnimator != null) {
+            mEdgeAnimator.cancel();
+            mEdgeAnimator = null;
+        }
+    }
+
     private void removeBall() {
+        cancelEdgeAnimation();
         if (mWindowManager != null && mBall != null) {
             try {
                 mWindowManager.removeView(mBall);
