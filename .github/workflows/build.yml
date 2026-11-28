@@ -45,34 +45,23 @@ jobs:
 
       - name: Decode signing keystore
         env:
-          KEYSTORE_BLOB: ${{ secrets.KEYSTORE_BLOB }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS_SECRET: ${{ secrets.KEY_ALIAS }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          # 优先使用合并密钥 KEYSTORE_BLOB：格式为 password|alias|base64(单行)
-          if [ -n "$KEYSTORE_BLOB" ]; then
-            PASS="${KEYSTORE_BLOB%%|*}"
-            REST="${KEYSTORE_BLOB#*|}"
-            ALIAS="${REST%%|*}"
-            B64="${REST#*|}"
-            echo "使用 KEYSTORE_BLOB 合并密钥。"
-          else
-            B64="$KEYSTORE_BASE64"
-            PASS="$KEYSTORE_PASSWORD"
-            ALIAS="$KEY_ALIAS_SECRET"
-            echo "使用分离的 Secret。"
-          fi
-          PASS=$(printf '%s' "$PASS" | tr -d '[:space:]')
-          ALIAS=$(printf '%s' "$ALIAS" | tr -d '[:space:]')
-          B64=$(printf '%s' "$B64" | tr -d '[:space:]')
+          # 组织密钥：KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD
+          B64=$(printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]')
+          PASS=$(printf '%s' "$KEYSTORE_PASSWORD" | tr -d '[:space:]')
+          ALIAS=$(printf '%s' "$KEY_ALIAS" | tr -d '[:space:]')
+          KEYPASS=$(printf '%s' "$KEY_PASSWORD" | tr -d '[:space:]')
           if [ -n "$B64" ]; then
             printf '%s' "$B64" | base64 -d > "$RUNNER_TEMP/release.jks"
             {
               echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks"
               echo "KEYSTORE_PASSWORD=$PASS"
               echo "KEY_ALIAS=$ALIAS"
-              echo "KEY_PASSWORD=$PASS"
+              echo "KEY_PASSWORD=$KEYPASS"
             } >> "$GITHUB_ENV"
             if keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$PASS" >/dev/null 2>&1; then
               echo "签名密钥校验通过。"
