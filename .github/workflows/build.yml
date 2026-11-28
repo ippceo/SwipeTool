@@ -65,7 +65,7 @@ jobs:
             # 回退到 KEYSTORE_PASSWORD（多数 keystore 的 key 密码与 store 密码相同）。
             echo "alias 条目：$(keytool -list -alias "$ALIAS" -keystore "$RUNNER_TEMP/release.jks" -storepass "$PASS" 2>/dev/null | head -n 1)"
             KEYPASS_OK=0
-            for CAND in "$KEYPASS" "$KEY_PASSWORD" "$PASS" "$KEYSTORE_PASSWORD"; do
+            for CAND in "$KEYPASS" "$PASS"; do
               [ -n "$CAND" ] || continue
               if ERR=$(keytool -certreq -alias "$ALIAS" -keystore "$RUNNER_TEMP/release.jks" \
                   -storepass "$PASS" -keypass "$CAND" 2>&1); then
@@ -78,6 +78,7 @@ jobs:
             done
             if [ "$KEYPASS_OK" != "1" ]; then
               echo "签名密钥校验失败：KEY_PASSWORD 与 KEYSTORE_PASSWORD 都无法解开该 alias 的私钥。"
+              echo "请检查组织 Secret KEY_PASSWORD 是否与 keystore 中该 alias 的私钥密码一致。"
               exit 1
             fi
             {
