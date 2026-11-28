@@ -63,16 +63,22 @@ jobs:
             fi
             # KEY_PASSWORD 用于解 alias 的私钥；若未配置或与当前 keystore 不匹配，
             # 回退到 KEYSTORE_PASSWORD（多数 keystore 的 key 密码与 store 密码相同）。
-            if [ -z "$KEYPASS" ] || ! keytool -certreq -alias "$ALIAS" \
-                -keystore "$RUNNER_TEMP/release.jks" -storepass "$PASS" -keypass "$KEYPASS" >/dev/null 2>&1; then
-              if keytool -certreq -alias "$ALIAS" \
-                  -keystore "$RUNNER_TEMP/release.jks" -storepass "$PASS" -keypass "$PASS" >/dev/null 2>&1; then
-                echo "KEY_PASSWORD 未配置或不匹配，回退使用 KEYSTORE_PASSWORD 作为 key 密码。"
-                KEYPASS="$PASS"
+            echo "alias 条目：$(keytool -list -alias "$ALIAS" -keystore "$RUNNER_TEMP/release.jks" -storepass "$PASS" 2>/dev/null | head -n 1)"
+            KEYPASS_OK=0
+            for CAND in "$KEYPASS" "$PASS"; do
+              [ -n "$CAND" ] || continue
+              if ERR=$(keytool -certreq -alias "$ALIAS" -keystore "$RUNNER_TEMP/release.jks" \
+                  -storepass "$PASS" -keypass "$CAND" 2>&1 >/dev/null); then
+                KEYPASS="$CAND"
+                KEYPASS_OK=1
+                break
               else
-                echo "签名密钥校验失败：KEY_PASSWORD 与 KEYSTORE_PASSWORD 都无法解开该 alias 的私钥。"
-                exit 1
+                echo "key 密码尝试失败：$ERR"
               fi
+            done
+            if [ "$KEYPASS_OK" != "1" ]; then
+              echo "签名密钥校验失败：KEY_PASSWORD 与 KEYSTORE_PASSWORD 都无法解开该 alias 的私钥。"
+              exit 1
             fi
             {
               echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks"
