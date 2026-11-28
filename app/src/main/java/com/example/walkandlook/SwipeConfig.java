@@ -1,4 +1,4 @@
-package com.example.swipetool;
+package com.example.walkandlook;
 
 /**
  * 滑动参数配置。所有滑动都基于屏幕绝对坐标的触摸事件模拟，

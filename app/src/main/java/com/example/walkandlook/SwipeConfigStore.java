@@ -1,4 +1,4 @@
-package com.example.swipetool;
+package com.example.walkandlook;
 
 import android.content.Context;
 import android.content.SharedPreferences;

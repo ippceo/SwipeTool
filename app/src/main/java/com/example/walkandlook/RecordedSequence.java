@@ -1,4 +1,4 @@
-package com.example.swipetool;
+package com.example.walkandlook;
 
 import org.json.JSONArray;
 import org.json.JSONException;

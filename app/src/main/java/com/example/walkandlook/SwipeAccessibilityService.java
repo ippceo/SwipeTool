@@ -1,4 +1,4 @@
-package com.example.swipetool;
+package com.example.walkandlook;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;

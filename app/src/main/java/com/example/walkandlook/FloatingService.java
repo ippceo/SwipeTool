@@ -1,4 +1,4 @@
-package com.example.swipetool;
+package com.example.walkandlook;
 
 import android.animation.ValueAnimator;
 import android.app.Notification;
@@ -36,9 +36,9 @@ import android.widget.Toast;
  */
 public class FloatingService extends Service {
 
-    public static final String ACTION_START = "com.example.swipetool.FLOAT_START";
-    public static final String ACTION_STOP = "com.example.swipetool.FLOAT_STOP";
-    public static final String ACTION_TOGGLE = "com.example.swipetool.FLOAT_TOGGLE";
+    public static final String ACTION_START = "com.example.walkandlook.FLOAT_START";
+    public static final String ACTION_STOP = "com.example.walkandlook.FLOAT_STOP";
+    public static final String ACTION_TOGGLE = "com.example.walkandlook.FLOAT_TOGGLE";
 
     private static final String CHANNEL_ID = "floating_swipe";
     private static final int NOTIF_ID = 2001;
