@@ -119,6 +119,20 @@ public class SwipeAccessibilityService extends AccessibilityService {
         return sInstance == null ? 0 : sInstance.mDoneCount;
     }
 
+    /** 本次运行的循环次数上限：0 表示无限。 */
+    public static int getLoops() {
+        if (sInstance == null || sInstance.mConfig == null) return 0;
+        return sInstance.mConfig.loops;
+    }
+
+    /** 剩余次数；无限循环或未运行时返回 -1。 */
+    public static int getRemainingCount() {
+        if (sInstance == null || sInstance.mConfig == null) return -1;
+        int loops = sInstance.mConfig.loops;
+        if (loops <= 0) return -1;
+        return Math.max(0, loops - sInstance.mDoneCount);
+    }
+
     /** 启动滑动。 */
     public static void start(SwipeConfig config) {
         if (sInstance == null) return;

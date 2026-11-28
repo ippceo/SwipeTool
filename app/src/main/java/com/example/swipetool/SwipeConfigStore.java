@@ -14,7 +14,7 @@ public final class SwipeConfigStore {
     private static final String PREF = "swipe_config";
     /** 版本号按槽位存储，避免「另存到别的槽」把默认槽的迁移标记提前置位。 */
     private static final String KEY_VERSION = "slotConfigVersion";
-    private static final int CONFIG_VERSION = 3;
+    private static final int CONFIG_VERSION = 4;
 
     private SwipeConfigStore() {
     }
@@ -69,7 +69,7 @@ public final class SwipeConfigStore {
                 .putInt(p + "loops", c.loops)
                 .putBoolean(p + "roundTrip", c.roundTrip)
                 .putLong(p + "pauseMs", c.pauseMs)
-                .putFloat(p + "curveDp", c.curveDp)
+                .putFloat(p + "curvePercent", c.curvePercent)
                 .putLong(p + "maxDurationSec", c.maxDurationSec)
                 .putFloat(p + "jitterPercent", c.jitterPercent)
                 .putBoolean(p + "useRecorded", c.useRecorded)
@@ -149,7 +149,13 @@ public final class SwipeConfigStore {
         c.loops = sp.getInt(p + "loops", c.loops);
         c.roundTrip = sp.getBoolean(p + "roundTrip", c.roundTrip);
         c.pauseMs = sp.getLong(p + "pauseMs", c.pauseMs);
-        c.curveDp = sp.getFloat(p + "curveDp", c.curveDp);
+        // 弯曲：1.8.1 之前单位是 dp（curveDp），迁移成「屏高百分比」。
+        if (sp.contains(p + "curvePercent")) {
+            c.curvePercent = sp.getFloat(p + "curvePercent", c.curvePercent);
+        } else {
+            float legacyCurveDp = sp.getFloat(p + "curveDp", 0f);
+            c.curvePercent = clampCurve(legacyCurveDp / screenHeightDp * 100f);
+        }
         c.maxDurationSec = sp.getLong(p + "maxDurationSec", c.maxDurationSec);
         c.jitterPercent = sp.getFloat(p + "jitterPercent", c.jitterPercent);
         c.useRecorded = sp.getBoolean(p + "useRecorded", c.useRecorded);
@@ -169,6 +175,13 @@ public final class SwipeConfigStore {
     private static float clampPercent(float v) {
         if (v < 1f) return 1f;
         if (v > 95f) return 95f;
+        return v;
+    }
+
+    /** 弯曲百分比钳到 [-100, 100]。 */
+    private static float clampCurve(float v) {
+        if (v < -100f) return -100f;
+        if (v > 100f) return 100f;
         return v;
     }
 }

@@ -21,8 +21,8 @@ final class SwipeTrajectory {
     private static final float START_SHIFT_RATIO = 0.06f;
     /** 抖动为 100% 时，方向角最多偏移 22°。 */
     private static final float ANGLE_SHIFT_DEG = 22f;
-    /** 抖动为 100% 时，弯曲幅度额外随机 ±70 dp。 */
-    private static final float CURVE_RANDOM_DP = 70f;
+    /** 抖动为 100% 时，弯曲幅度额外随机 ±8% 屏幕高度。 */
+    private static final float CURVE_RANDOM_RATIO = 0.08f;
     /** 抖动为 100% 时，轨迹摆动幅度约为路径长度的 6%。 */
     private static final float WOBBLE_RATIO = 0.06f;
 
@@ -75,9 +75,10 @@ final class SwipeTrajectory {
         float ex = clamp(sx + (float) (Math.cos(rad) * distancePx), 1f, width - 1f);
         float ey = clamp(sy + (float) (Math.sin(rad) * distancePx), 1f, height - 1f);
 
-        float curve = c.curveDp * density;
+        // 弯曲幅度按「屏高百分比」换算成像素，与屏幕大小成正比。
+        float curve = c.curvePercent / 100f * height;
         if (strength > 0f) {
-            curve += signed(random) * strength * CURVE_RANDOM_DP * density;
+            curve += signed(random) * strength * CURVE_RANDOM_RATIO * height;
         }
         float length = (float) Math.hypot(ex - sx, ey - sy);
         float wobble = strength * length * WOBBLE_RATIO;

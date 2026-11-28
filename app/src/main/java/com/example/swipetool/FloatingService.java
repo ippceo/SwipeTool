@@ -12,16 +12,20 @@ import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 /**
@@ -47,9 +51,45 @@ public class FloatingService extends Service {
     private WindowManager mWindowManager;
     private FrameLayout mBall;        // 圆形外框：渐变背景 + 阴影
     private ImageView mBallIcon;      // 居中的播放 / 停止图标
+    private TextView mBadge;          // 底部小角标：剩余次数 / 已完成次数
     private WindowManager.LayoutParams mParams;
     private boolean mRunning = false;
     private ValueAnimator mEdgeAnimator;
+
+    /** 定时同步无障碍服务的真实运行状态（主界面也可能直接启动滑动）。 */
+    private final Handler mUiHandler = new Handler(Looper.getMainLooper());
+    private int mLastNotifiedDone = -1;
+    private final Runnable mSyncRunnable = new Runnable() {
+        @Override
+        public void run() {
+            boolean running = SwipeAccessibilityService.isRunning();
+            if (running != mRunning) {
+                mRunning = running;
+                mLastNotifiedDone = -1;
+                updateBallLook();
+                updateNotification();
+            }
+            updateBadge();
+            // 运行中完成的次数变化时，同步刷新通知文案
+            if (mRunning) {
+                int done = SwipeAccessibilityService.getDoneCount();
+                if (done != mLastNotifiedDone) {
+                    mLastNotifiedDone = done;
+                    updateNotification();
+                }
+            }
+            mUiHandler.postDelayed(this, 500L);
+        }
+    };
+
+    private void startUiSync() {
+        mUiHandler.removeCallbacks(mSyncRunnable);
+        mUiHandler.post(mSyncRunnable);
+    }
+
+    private void stopUiSync() {
+        mUiHandler.removeCallbacks(mSyncRunnable);
+    }
 
     /** 悬浮球服务是否正在运行（供主界面判断是否需要重复拉起）。 */
     private static boolean sRunning = false;
@@ -83,6 +123,7 @@ public class FloatingService extends Service {
             showBall();
         }
         sRunning = true;
+        startUiSync();
         if (ACTION_TOGGLE.equals(action)) {
             toggle();
         }
@@ -92,6 +133,7 @@ public class FloatingService extends Service {
     @Override
     public void onDestroy() {
         sRunning = false;
+        stopUiSync();
         stopSwipe();
         removeBall();
         super.onDestroy();
@@ -106,7 +148,7 @@ public class FloatingService extends Service {
             return;
         }
 
-        int size = dp(56);
+        int size = dp(60);
         mBall = new FrameLayout(this);
         mBall.setClickable(true);
         mBall.setFocusable(true);
@@ -118,7 +160,28 @@ public class FloatingService extends Service {
         // 图标放进 FrameLayout 并指定 Gravity.CENTER，保证严格居中
         mBall.addView(mBallIcon, new FrameLayout.LayoutParams(
                 dp(26), dp(26), Gravity.CENTER));
+        mBallIcon.setTranslationY(-dp(4));
+
+        // 底部小角标：运行中显示剩余 / 已完成次数，停止时隐藏
+        mBadge = new TextView(this);
+        mBadge.setTextColor(Color.WHITE);
+        mBadge.setTextSize(9f);
+        mBadge.setGravity(Gravity.CENTER);
+        GradientDrawable badgeBg = new GradientDrawable();
+        badgeBg.setShape(GradientDrawable.RECTANGLE);
+        badgeBg.setCornerRadius(dp(7));
+        badgeBg.setColor(0xCC000000);
+        mBadge.setBackground(badgeBg);
+        mBadge.setPadding(dp(3), 0, dp(3), 0);
+        mBadge.setVisibility(View.GONE);
+        FrameLayout.LayoutParams badgeLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        badgeLp.bottomMargin = dp(4);
+        mBall.addView(mBadge, badgeLp);
+
         updateBallLook();
+        updateBadge();
 
         int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -157,6 +220,20 @@ public class FloatingService extends Service {
         if (mBallIcon != null) {
             mBallIcon.setImageResource(mRunning ? R.drawable.ic_stop : R.drawable.ic_play);
         }
+        updateBadge();
+    }
+
+    /** 刷新悬浮球底部角标：有限循环显示「剩余次数」，无限循环显示「已完成次数」。 */
+    private void updateBadge() {
+        if (mBadge == null) return;
+        if (!mRunning) {
+            mBadge.setVisibility(View.GONE);
+            return;
+        }
+        int remaining = SwipeAccessibilityService.getRemainingCount();
+        int done = SwipeAccessibilityService.getDoneCount();
+        mBadge.setText(remaining >= 0 ? String.valueOf(remaining) : String.valueOf(done));
+        mBadge.setVisibility(View.VISIBLE);
     }
 
     private void setupTouch() {
@@ -275,6 +352,7 @@ public class FloatingService extends Service {
 
     private void removeBall() {
         cancelEdgeAnimation();
+        stopUiSync();
         if (mWindowManager != null && mBall != null) {
             try {
                 mWindowManager.removeView(mBall);
@@ -282,6 +360,7 @@ public class FloatingService extends Service {
             }
         }
         mBall = null;
+        mBadge = null;
     }
 
     // ---------- 启停 ----------
@@ -357,9 +436,19 @@ public class FloatingService extends Service {
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
 
+        String text;
+        if (mRunning) {
+            int done = SwipeAccessibilityService.getDoneCount();
+            int remaining = SwipeAccessibilityService.getRemainingCount();
+            text = remaining >= 0
+                    ? "运行中 · 已完成 " + done + " 次，还剩 " + remaining + " 次"
+                    : "运行中 · 已完成 " + done + " 次";
+        } else {
+            text = "已就绪 · 点悬浮球开始，点「退出」关闭应用";
+        }
+
         b.setContentTitle("屏幕滑动 · 悬浮控制")
-                .setContentText(mRunning ? "运行中 · 点「停止」暂停，点「退出」关闭应用"
-                        : "已就绪 · 点悬浮球开始，点「退出」关闭应用")
+                .setContentText(text)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setOngoing(true)
                 .setContentIntent(openPi)

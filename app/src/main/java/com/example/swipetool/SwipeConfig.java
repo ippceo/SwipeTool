@@ -44,8 +44,8 @@ public class SwipeConfig {
     public boolean roundTrip = false;
     /** 往返时到达终点后的停顿，单位毫秒 */
     public long pauseMs = 200L;
-    /** 轨迹弯曲幅度，单位 dp，0 表示直线 */
-    public float curveDp = 0f;
+    /** 轨迹弯曲幅度，单位为「屏幕高度百分比」-100～100，0 表示直线 */
+    public float curvePercent = 0f;
     /** 运行时长上限，单位秒，0 表示不限制（到时自动停止） */
     public long maxDurationSec = 0L;
     /**

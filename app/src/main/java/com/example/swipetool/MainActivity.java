@@ -13,6 +13,7 @@ import android.provider.Settings;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
+import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -82,7 +83,7 @@ public class MainActivity extends Activity {
     private static final String INFO_INTERVAL_MIN = "开启「间隔随机」后，两次滑动之间间隔的下限，单位毫秒。";
     private static final String INFO_INTERVAL_MAX = "开启「间隔随机」后，两次滑动之间间隔的上限，单位毫秒。每次循环都会在此区间内随机取值，让节奏不固定。";
     private static final String INFO_PAUSE = "开启「往返滑动」后，到达终点后停顿多久再滑回起点，单位毫秒。";
-    private static final String INFO_CURVE = "轨迹的基础弯曲幅度，0 为直线；正数向一侧弯曲，负数向另一侧弯曲，单位 dp。开启随机抖动后，每次还会在此基础上随机偏转，形成歪歪扭扭的走势。";
+    private static final String INFO_CURVE = "轨迹的基础弯曲幅度，单位为「屏幕高度百分比」，范围 -100～100，0 为直线；正负表示向两侧弯曲。开启随机抖动后，每次还会在此基础上随机偏转，形成歪歪扭扭的走势。";
     private static final String INFO_LOOPS = "总共执行多少次滑动。0 表示无限循环，直到手动停止或达到「运行时长上限」。";
     private static final String INFO_MAX_DUR = "滑动运行多久后自动停止，单位秒。0 表示不限制，可防止忘记关闭。";
     private static final String INFO_JITTER = "拟人化随机强度（百分比）。0 = 关闭方向 / 弯曲 / 摆动的随机；起点与长度仍会在各自的「下限 ~ 上限」之间随机（上下限相等时才固定）。数值越大，连续操作看起来越像真人手指。";
@@ -183,39 +184,81 @@ public class MainActivity extends Activity {
 
         addTitle(ll, "滑动参数");
         TextView hint = new TextView(this);
-        hint.setText("起点 / 长度 / 时长 / 间隔都支持「下限 ~ 上限」随机，"
-                + "相等即为固定值；距离与起点按屏幕比例计算。");
+        hint.setText("起点 / 长度 / 时长 / 间隔都支持「下限 ~ 上限」随机，相等即为固定值；"
+                + "距离、弯曲与起点都按屏幕比例计算。每个分组下方都有快捷按钮，可直接套用常用值。");
         hint.setTextSize(13f);
         hint.setTextColor(0xFF555555);
         hint.setPadding(0, 0, 0, dp(4));
         ll.addView(hint);
 
-        addSection(ll, "方向快捷（角度：0=右 90=下 180=左 270=上）");
-        LinearLayout dirRow = new LinearLayout(this);
-        dirRow.setOrientation(LinearLayout.HORIZONTAL);
-        dirRow.addView(dirButton("↑ 上", "270"), wrap());
-        dirRow.addView(dirButton("↓ 下", "90"), wrap());
-        dirRow.addView(dirButton("← 左", "180"), wrap());
-        dirRow.addView(dirButton("→ 右", "0"), wrap());
-        ll.addView(dirRow);
-
-        // 实时预览：竖屏手机比例，让用户直观看到滑动会怎么走
-        addSection(ll, "滑动预览（竖屏比例，随参数实时更新）");
+        // ---- 预览 ----
+        addDivider(ll);
+        addSection(ll, "滑动预览（竖屏，等比当前屏幕分辨率）");
         mPreview = new SwipePreviewView(this);
         ll.addView(mPreview, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        TextView resInfo = new TextView(this);
+        resInfo.setText(screenInfoText());
+        resInfo.setTextSize(12f);
+        resInfo.setTextColor(0xFF888888);
+        resInfo.setGravity(Gravity.CENTER);
+        resInfo.setPadding(0, dp(2), 0, 0);
+        ll.addView(resInfo);
 
-        addSection(ll, "参数（点右侧「!」查看含义）");
+        // ---- 起点 ----
+        addDivider(ll);
+        addSection(ll, "起点位置（X 按屏宽、Y 按屏高的百分比 0–100）");
+        LinearLayout startQuick = newQuickRow(ll);
         etXMin = addField(ll, "起点 X 下限 · 屏宽百分比 0–100", "50", INFO_X_MIN);
         etXMax = addField(ll, "起点 X 上限 · 屏宽百分比 0–100", "50", INFO_X_MAX);
         etYMin = addField(ll, "起点 Y 下限 · 屏高百分比 0–100", "50", INFO_Y_MIN);
         etYMax = addField(ll, "起点 Y 上限 · 屏高百分比 0–100", "50", INFO_Y_MAX);
+        addQuickButton(startQuick, "居中", () -> setStart(50f, 50f));
+        addQuickButton(startQuick, "顶部", () -> setStart(50f, 15f));
+        addQuickButton(startQuick, "底部", () -> setStart(50f, 85f));
+        addQuickButton(startQuick, "左侧", () -> setStart(20f, 50f));
+        addQuickButton(startQuick, "右侧", () -> setStart(80f, 50f));
+
+        // ---- 方向 ----
+        addDivider(ll);
+        addSection(ll, "滑动方向");
+        LinearLayout dirQuick = newQuickRow(ll);
         etAngle = addField(ll, "角度 · 0–359（0右 90下 180左 270上）", "90", INFO_ANGLE);
+        addQuickButton(dirQuick, "↑ 上", () -> etAngle.setText("270"));
+        addQuickButton(dirQuick, "↓ 下", () -> etAngle.setText("90"));
+        addQuickButton(dirQuick, "← 左", () -> etAngle.setText("180"));
+        addQuickButton(dirQuick, "→ 右", () -> etAngle.setText("0"));
+
+        // ---- 距离 ----
+        addDivider(ll);
+        addSection(ll, "滑动距离（屏高百分比 0–100）");
+        LinearLayout distQuick = newQuickRow(ll);
         etDistMin = addField(ll, "距离下限 · 屏高百分比 0–100", "30", INFO_DIST_MIN);
         etDistMax = addField(ll, "距离上限 · 屏高百分比 0–100（与下限相同即固定）", "50", INFO_DIST_MAX);
+        addQuickButton(distQuick, "20%", () -> setRange(etDistMin, etDistMax, "20"));
+        addQuickButton(distQuick, "30%", () -> setRange(etDistMin, etDistMax, "30"));
+        addQuickButton(distQuick, "50%", () -> setRange(etDistMin, etDistMax, "50"));
+        addQuickButton(distQuick, "70%", () -> setRange(etDistMin, etDistMax, "70"));
+
+        // ---- 速度 ----
+        addDivider(ll);
+        addSection(ll, "滑动速度（时长 ms，越小越快）");
+        LinearLayout durQuick = newQuickRow(ll);
         etDurationMin = addField(ll, "时长下限 · 50–60000 ms（越小越快）", "400", INFO_DURATION_MIN);
         etDurationMax = addField(ll, "时长上限 · 50–60000 ms（与下限相同即固定）", "700", INFO_DURATION_MAX);
+        addQuickButton(durQuick, "快 200", () -> setRange(etDurationMin, etDurationMax, "200"));
+        addQuickButton(durQuick, "中 400", () -> setRange(etDurationMin, etDurationMax, "400"));
+        addQuickButton(durQuick, "慢 800", () -> setRange(etDurationMin, etDurationMax, "800"));
+
+        // ---- 节奏 ----
+        addDivider(ll);
+        addSection(ll, "滑动节奏（间隔 ms）");
+        LinearLayout intQuick = newQuickRow(ll);
         etInterval = addField(ll, "间隔（固定）· 0–600000 ms", "500", INFO_INTERVAL);
+        addQuickButton(intQuick, "100", () -> etInterval.setText("100"));
+        addQuickButton(intQuick, "300", () -> etInterval.setText("300"));
+        addQuickButton(intQuick, "500", () -> etInterval.setText("500"));
+        addQuickButton(intQuick, "1000", () -> etInterval.setText("1000"));
 
         cbIntervalRandom = new CheckBox(this);
         cbIntervalRandom.setText("间隔随机：每次在最小~最大之间随机取值");
@@ -227,6 +270,15 @@ public class MainActivity extends Activity {
         etIntervalMin = addField(llIntervalRandom, "最小间隔 · 0–600000 ms", "200", INFO_INTERVAL_MIN);
         etIntervalMax = addField(llIntervalRandom, "最大间隔 · 0–600000 ms", "800", INFO_INTERVAL_MAX);
 
+        // ---- 轨迹 ----
+        addDivider(ll);
+        addSection(ll, "轨迹形态");
+        LinearLayout curveQuick = newQuickRow(ll);
+        etCurve = addField(ll, "弯曲幅度 · 屏高百分比 -100～100（0=直线）", "0", INFO_CURVE);
+        addQuickButton(curveQuick, "-20", () -> etCurve.setText("-20"));
+        addQuickButton(curveQuick, "直线", () -> etCurve.setText("0"));
+        addQuickButton(curveQuick, "20", () -> etCurve.setText("20"));
+
         cbRoundTrip = new CheckBox(this);
         cbRoundTrip.setText("往返滑动（到终点后滑回起点）");
         cbRoundTrip.setOnCheckedChangeListener((b, v) -> refreshConditionalFields());
@@ -236,10 +288,22 @@ public class MainActivity extends Activity {
         ll.addView(llRoundTrip, fullWidth(llRoundTrip));
         etPause = addField(llRoundTrip, "往返停顿 · 0–60000 ms", "200", INFO_PAUSE);
 
-        etCurve = addField(ll, "弯曲幅度 · -2000～2000 dp（0=直线）", "0", INFO_CURVE);
+        // ---- 循环与随机 ----
+        addDivider(ll);
+        addSection(ll, "循环与随机");
+        LinearLayout loopQuick = newQuickRow(ll);
         etLoops = addField(ll, "循环次数 · 0–1000000（0=无限）", "0", INFO_LOOPS);
+        addQuickButton(loopQuick, "1 次", () -> etLoops.setText("1"));
+        addQuickButton(loopQuick, "10", () -> etLoops.setText("10"));
+        addQuickButton(loopQuick, "50", () -> etLoops.setText("50"));
+        addQuickButton(loopQuick, "无限", () -> etLoops.setText("0"));
         etMaxDur = addField(ll, "运行时长上限 · 0–86400 秒（0=不限）", "0", INFO_MAX_DUR);
+        LinearLayout jitterQuick = newQuickRow(ll);
         etJitter = addField(ll, "随机抖动 · 0–100 %（0=关闭，越大越像真人）", "40", INFO_JITTER);
+        addQuickButton(jitterQuick, "0", () -> etJitter.setText("0"));
+        addQuickButton(jitterQuick, "30", () -> etJitter.setText("30"));
+        addQuickButton(jitterQuick, "60", () -> etJitter.setText("60"));
+        addQuickButton(jitterQuick, "100", () -> etJitter.setText("100"));
 
         // 预览随参数实时刷新
         watch(etXMin); watch(etXMax); watch(etYMin); watch(etYMax);
@@ -247,6 +311,21 @@ public class MainActivity extends Activity {
         watch(etCurve); watch(etJitter);
         refreshConditionalFields();
         return sv;
+    }
+
+    /** 当前真实屏幕分辨率与宽高比，显示在预览下方，说明预览确实按本机比例渲染。 */
+    @SuppressWarnings("deprecation")
+    private String screenInfoText() {
+        DisplayMetrics dm = new DisplayMetrics();
+        WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+        if (wm != null) {
+            wm.getDefaultDisplay().getRealMetrics(dm);
+        } else {
+            dm = getResources().getDisplayMetrics();
+        }
+        float ratio = dm.widthPixels > 0 ? (float) dm.heightPixels / dm.widthPixels : 0f;
+        return "当前屏幕 " + dm.widthPixels + " × " + dm.heightPixels
+                + "  ·  宽高比 1 : " + String.format(java.util.Locale.US, "%.2f", ratio);
     }
 
     private ScrollView buildExecuteTab() {
@@ -423,14 +502,58 @@ public class MainActivity extends Activity {
 
     // ---------- 行为 ----------
 
-    private Button dirButton(String label, String angle) {
+    /** 分组之间的浅灰分隔线。 */
+    private void addDivider(LinearLayout root) {
+        View line = new View(this);
+        line.setBackgroundColor(0xFFE0E0E0);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1)));
+        lp.topMargin = dp(16);
+        root.addView(line, lp);
+    }
+
+    /** 新建一行快捷按钮容器（先占位，参数输入框建好后再往里填按钮）。 */
+    private LinearLayout newQuickRow(LinearLayout root) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(2), 0, dp(2));
+        root.addView(row, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return row;
+    }
+
+    /** 往快捷行里加一个小按钮，点击直接套用常用值。 */
+    private void addQuickButton(LinearLayout row, String text, Runnable action) {
         Button b = new Button(this);
-        b.setText(label);
+        b.setText(text);
+        b.setAllCaps(false);
+        b.setTextSize(12f);
+        b.setMinimumWidth(0);
+        b.setMinimumHeight(0);
+        b.setPadding(0, 0, 0, 0);
         b.setOnClickListener(v -> {
-            etAngle.setText(angle);
+            action.run();
             hideKeyboard();
         });
-        return b;
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(36), 1f);
+        lp.setMargins(dp(2), 0, dp(2), 0);
+        row.addView(b, lp);
+    }
+
+    /** 同时设置一组「下限 / 上限」为同一个值（固定该参数）。 */
+    private void setRange(EditText min, EditText max, String value) {
+        min.setText(value);
+        max.setText(value);
+    }
+
+    /** 一键设置起点（X / Y 上下限都设成同一个值）。 */
+    private void setStart(float xPercent, float yPercent) {
+        String x = fmtNum(xPercent);
+        String y = fmtNum(yPercent);
+        etXMin.setText(x);
+        etXMax.setText(x);
+        etYMin.setText(y);
+        etYMax.setText(y);
     }
 
     private void openAccessibilitySettings() {
@@ -693,7 +816,7 @@ public class MainActivity extends Activity {
         c.loops = (int) clampL(parseLong(etLoops, c.loops), 0L, 1000000L);
         c.roundTrip = cbRoundTrip.isChecked();
         c.pauseMs = clampL((long) parseLong(etPause, c.pauseMs), 0L, 60000L);
-        c.curveDp = clampF(parseFloat(etCurve, c.curveDp), -2000f, 2000f);
+        c.curvePercent = clampF(parseFloat(etCurve, c.curvePercent), -100f, 100f);
         c.maxDurationSec = clampL(parseLong(etMaxDur, c.maxDurationSec), 0L, 86400L);
         c.jitterPercent = clampF(parseFloat(etJitter, c.jitterPercent), 0f, 100f);
         c.startDelaySec = (int) clampL(parseLong(etStartDelay, c.startDelaySec), 0L, 60L);
@@ -755,7 +878,7 @@ public class MainActivity extends Activity {
         etLoops.setText(String.valueOf(c.loops));
         cbRoundTrip.setChecked(c.roundTrip);
         etPause.setText(String.valueOf(c.pauseMs));
-        etCurve.setText(fmtNum(c.curveDp));
+        etCurve.setText(fmtNum(c.curvePercent));
         etMaxDur.setText(String.valueOf(c.maxDurationSec));
         etJitter.setText(fmtNum(c.jitterPercent));
         cbIntervalRandom.setChecked(c.intervalRandom);
@@ -969,10 +1092,6 @@ public class MainActivity extends Activity {
     private LinearLayout.LayoutParams fullWidth(View v) {
         return new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-    }
-
-    private LinearLayout.LayoutParams wrap() {
-        return new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
     }
 
     private LinearLayout.LayoutParams weight() {
