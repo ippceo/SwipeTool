@@ -15,8 +15,14 @@ public class SwipeConfig {
     public float distanceDp = 400f;
     /** 单次滑动持续时间，单位毫秒（越小越快） */
     public long durationMs = 500L;
-    /** 两次滑动之间的间隔，单位毫秒 */
+    /** 两次滑动之间的固定间隔，单位毫秒（未开启随机间隔时使用） */
     public long intervalMs = 500L;
+    /** 是否在最小 / 最大间隔之间随机取值，让每次间隔都不同 */
+    public boolean intervalRandom = false;
+    /** 随机间隔下限，单位毫秒 */
+    public long intervalMinMs = 200L;
+    /** 随机间隔上限，单位毫秒 */
+    public long intervalMaxMs = 800L;
     /** 循环次数，0 表示无限循环 */
     public int loops = 0;
     /** 是否往返滑动（到达终点后再滑回起点） */
@@ -31,4 +37,30 @@ public class SwipeConfig {
     public long maxDurationSec = 0L;
     /** 随机抖动强度 0-100（%），影响距离、角度、起点与间隔；0 表示关闭 */
     public float jitterPercent = 0f;
+
+    /** 返回 [min, max] 之间的随机浮点数。 */
+    public static float rnd(float min, float max) {
+        if (max <= min) return min;
+        return min + (float) Math.random() * (max - min);
+    }
+
+    /**
+     * 解析本次循环实际使用的间隔（毫秒）：
+     * 开启「间隔随机」时在 [intervalMinMs, intervalMaxMs] 内随机取值；
+     * 否则使用固定 intervalMs。两种情况都会再叠加「随机抖动」对间隔的扰动。
+     */
+    public static long resolveInterval(SwipeConfig c) {
+        long base;
+        if (c.intervalRandom && c.intervalMaxMs > c.intervalMinMs) {
+            base = c.intervalMinMs
+                    + (long) (Math.random() * (double) (c.intervalMaxMs - c.intervalMinMs));
+        } else {
+            base = c.intervalMs;
+        }
+        float jj = Math.max(0f, Math.min(1f, c.jitterPercent / 100f));
+        if (jj > 0f) {
+            base = Math.max(0L, Math.round(base * (1f + rnd(-jj, jj))));
+        }
+        return Math.max(0L, base);
+    }
 }

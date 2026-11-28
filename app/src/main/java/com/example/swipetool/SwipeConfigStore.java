@@ -49,6 +49,9 @@ public final class SwipeConfigStore {
                 .putFloat(p + "distanceDp", c.distanceDp)
                 .putLong(p + "durationMs", c.durationMs)
                 .putLong(p + "intervalMs", c.intervalMs)
+                .putBoolean(p + "intervalRandom", c.intervalRandom)
+                .putLong(p + "intervalMinMs", c.intervalMinMs)
+                .putLong(p + "intervalMaxMs", c.intervalMaxMs)
                 .putInt(p + "loops", c.loops)
                 .putBoolean(p + "roundTrip", c.roundTrip)
                 .putLong(p + "pauseMs", c.pauseMs)
@@ -68,6 +71,9 @@ public final class SwipeConfigStore {
         c.distanceDp = sp.getFloat(p + "distanceDp", c.distanceDp);
         c.durationMs = sp.getLong(p + "durationMs", c.durationMs);
         c.intervalMs = sp.getLong(p + "intervalMs", c.intervalMs);
+        c.intervalRandom = sp.getBoolean(p + "intervalRandom", c.intervalRandom);
+        c.intervalMinMs = sp.getLong(p + "intervalMinMs", c.intervalMinMs);
+        c.intervalMaxMs = sp.getLong(p + "intervalMaxMs", c.intervalMaxMs);
         c.loops = sp.getInt(p + "loops", c.loops);
         c.roundTrip = sp.getBoolean(p + "roundTrip", c.roundTrip);
         c.pauseMs = sp.getLong(p + "pauseMs", c.pauseMs);

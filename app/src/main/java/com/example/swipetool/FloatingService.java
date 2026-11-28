@@ -17,7 +17,8 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.TextView;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.Toast;
 
 /**
@@ -36,7 +37,8 @@ public class FloatingService extends Service {
     private static final int NOTIF_ID = 2001;
 
     private WindowManager mWindowManager;
-    private TextView mBall;
+    private FrameLayout mBall;        // 圆形外框：渐变背景 + 阴影
+    private ImageView mBallIcon;      // 居中的播放 / 停止图标
     private WindowManager.LayoutParams mParams;
     private boolean mRunning = false;
 
@@ -83,13 +85,18 @@ public class FloatingService extends Service {
             return;
         }
 
-        int size = dp(54);
-        mBall = new TextView(this);
-        mBall.setWidth(size);
-        mBall.setHeight(size);
-        mBall.setGravity(Gravity.CENTER);
-        mBall.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-        mBall.setTextColor(Color.WHITE);
+        int size = dp(56);
+        mBall = new FrameLayout(this);
+        mBall.setClickable(true);
+        mBall.setFocusable(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            mBall.setElevation(dp(8));
+        }
+        mBallIcon = new ImageView(this);
+        mBallIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        // 图标放进 FrameLayout 并指定 Gravity.CENTER，保证严格居中
+        mBall.addView(mBallIcon, new FrameLayout.LayoutParams(
+                dp(26), dp(26), Gravity.CENTER));
         updateBallLook();
 
         int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
@@ -118,12 +125,17 @@ public class FloatingService extends Service {
 
     private void updateBallLook() {
         if (mBall == null) return;
-        GradientDrawable bg = new GradientDrawable();
+        // 渐变填充 + 白色描边，比单色更有质感；运行中绿色，停止时灰蓝
+        int[] colors = mRunning
+                ? new int[]{0xFF66BB6A, 0xFF2E7D32}
+                : new int[]{0xFF78909C, 0xFF37474F};
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, colors);
         bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(mRunning ? 0xFF43A047 : 0xFF757575);
         bg.setStroke(dp(2), Color.WHITE);
         mBall.setBackground(bg);
-        mBall.setText(mRunning ? "■" : "▶");
+        if (mBallIcon != null) {
+            mBallIcon.setImageResource(mRunning ? R.drawable.ic_stop : R.drawable.ic_play);
+        }
     }
 
     private void setupTouch() {
@@ -254,8 +266,14 @@ public class FloatingService extends Service {
         PendingIntent togglePi = PendingIntent.getService(this, 1,
                 new Intent(this, FloatingService.class).setAction(ACTION_TOGGLE),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        PendingIntent closePi = PendingIntent.getService(this, 2,
+        // 「退出」：停止滑动 + 移除悬浮球 + 结束前台服务
+        PendingIntent exitPi = PendingIntent.getService(this, 2,
                 new Intent(this, FloatingService.class).setAction(ACTION_STOP),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        // 点击通知主体回到 App 主界面
+        PendingIntent openPi = PendingIntent.getActivity(this, 3,
+                new Intent(this, MainActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         Notification.Builder b = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
@@ -263,15 +281,17 @@ public class FloatingService extends Service {
                 : new Notification.Builder(this);
 
         b.setContentTitle("屏幕滑动 · 悬浮控制")
-                .setContentText(mRunning ? "运行中 · 点悬浮球或此处停止" : "已就绪 · 点悬浮球开始")
+                .setContentText(mRunning ? "运行中 · 点「停止」暂停，点「退出」关闭"
+                        : "已就绪 · 点悬浮球开始，点「退出」关闭")
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setOngoing(true)
+                .setContentIntent(openPi)
                 .addAction(new Notification.Action.Builder(
                         android.R.drawable.ic_media_play,
                         mRunning ? "停止" : "开始", togglePi).build())
                 .addAction(new Notification.Action.Builder(
                         android.R.drawable.ic_menu_close_clear_cancel,
-                        "关闭悬浮球", closePi).build());
+                        "退出", exitPi).build());
 
         return b.build();
     }
