@@ -53,16 +53,12 @@ public class SwipeAccessibilityService extends AccessibilityService {
                 stop();
                 return;
             }
-            // 一次完整循环耗时：往返时含去程+停顿+回程，再加用户设定的间隔。
+            // 一次完整循环耗时：往返时含去程+停顿+回程，再加本次间隔。
             long gestureSpan = mConfig.roundTrip
                     ? (mConfig.durationMs * 2L + mConfig.pauseMs)
                     : mConfig.durationMs;
-            // 间隔抖动：±jitter% 的间隔扰动，避免节奏完全固定
-            float jj = Math.max(0f, Math.min(1f, mConfig.jitterPercent / 100f));
-            long interval = mConfig.intervalMs;
-            if (jj > 0f) {
-                interval = Math.max(0L, Math.round(interval * (1f + rnd(-jj, jj))));
-            }
+            // 间隔：固定值，或在「最小~最大」之间随机（再叠加抖动扰动）
+            long interval = SwipeConfig.resolveInterval(mConfig);
             long cycle = gestureSpan + interval + 50L; // 50ms 余量，避免手势重叠
             mHandler.postDelayed(this, cycle);
         }

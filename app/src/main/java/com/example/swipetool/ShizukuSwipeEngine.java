@@ -149,12 +149,8 @@ public final class ShizukuSwipeEngine {
                         return;
                     }
                     long span = c.roundTrip ? (c.durationMs * 2L + c.pauseMs) : c.durationMs;
-                    // 间隔抖动：±jitter% 的间隔扰动
-                    float jj = Math.max(0f, Math.min(1f, c.jitterPercent / 100f));
-                    long interval = c.intervalMs;
-                    if (jj > 0f) {
-                        interval = Math.max(0L, Math.round(interval * (1f + rnd(-jj, jj))));
-                    }
+                    // 间隔：固定值，或在「最小~最大」之间随机（再叠加抖动扰动）
+                    long interval = SwipeConfig.resolveInterval(c);
                     sHandler.postDelayed(sTask, span + interval + 50L);
                 });
             });

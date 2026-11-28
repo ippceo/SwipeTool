@@ -10,13 +10,17 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
@@ -34,12 +38,29 @@ public class MainActivity extends Activity {
 
     private static final int REQ_SHIZUKU = 1001;
 
-    private EditText etX, etY, etAngle, etDistance, etDuration, etInterval, etLoops, etPause, etCurve, etMaxDur, etJitter;
-    private CheckBox cbRoundTrip;
+    private EditText etX, etY, etAngle, etDistance, etDuration, etInterval, etLoops, etPause,
+            etCurve, etMaxDur, etJitter, etIntervalMin, etIntervalMax;
+    private CheckBox cbRoundTrip, cbIntervalRandom;
     private Button btnStart, btnStop;
     private TextView tvStatus;
     private RadioGroup rgMode;
     private RadioButton rbA11y, rbShizuku;
+    private SwipePreviewView mPreview;
+
+    // 各参数「!」提示气泡的说明文案
+    private static final String INFO_X = "滑动起点的横坐标，按屏幕宽度百分比定位。0 = 屏幕最左边，100 = 最右边，50 = 水平居中。会与「随机抖动」叠加做小幅扰动。";
+    private static final String INFO_Y = "滑动起点的纵坐标，按屏幕高度百分比定位。0 = 屏幕最上边，100 = 最下边，50 = 垂直居中。会与「随机抖动」叠加做小幅扰动。";
+    private static final String INFO_ANGLE = "滑动方向角。0 = 向右，90 = 向下，180 = 向左，270 = 向上；可填任意角度实现斜向滑动。会被「随机抖动」小幅扰动。";
+    private static final String INFO_DISTANCE = "单次滑动的长度，单位 dp（会按屏幕密度自动换算成像素）。会被「随机抖动」按百分比扰动。";
+    private static final String INFO_DURATION = "单次手势从起点滑到终点的持续时间，单位毫秒。数值越小滑动越快，越大越慢。无障碍与 Shizuku 两种方式均生效。";
+    private static final String INFO_INTERVAL = "未开启「间隔随机」时，连续两次滑动之间的固定等待时间，单位毫秒。开启「间隔随机」后将在最小~最大之间随机取值。";
+    private static final String INFO_INTERVAL_MIN = "开启「间隔随机」后，两次滑动之间间隔的下限，单位毫秒。";
+    private static final String INFO_INTERVAL_MAX = "开启「间隔随机」后，两次滑动之间间隔的上限，单位毫秒。每次循环都会在此区间内随机取值，让节奏不固定。";
+    private static final String INFO_PAUSE = "开启「往返滑动」后，到达终点后停顿多久再滑回起点，单位毫秒。仅无障碍方式支持往返。";
+    private static final String INFO_CURVE = "轨迹的弯曲程度，0 为直线；正数向一侧弯曲，负数向另一侧弯曲，单位 dp。仅无障碍方式支持曲线，Shizuku 方式恒为直线。";
+    private static final String INFO_LOOPS = "总共执行多少次滑动。0 表示无限循环，直到手动停止或达到「运行时长上限」。";
+    private static final String INFO_MAX_DUR = "滑动运行多久后自动停止，单位秒。0 表示不限制，可防止忘记关闭。";
+    private static final String INFO_JITTER = "对起点 / 角度 / 距离 / 间隔做随机扰动的强度（百分比）。0 = 关闭；数值越大，连续操作的轨迹和节奏越不固定，但不改变滑动本身的性质。";
 
     private final Handler mStatusHandler = new Handler(Looper.getMainLooper());
     private final Runnable mStatusTicker = new Runnable() {
@@ -166,22 +187,41 @@ public class MainActivity extends Activity {
         dirRow.addView(dirButton("→ 右", "0"), wrap());
         root.addView(dirRow);
 
-        addSection(root, "滑动参数");
-        etX = addField(root, "起点 X（屏宽百分比 0-100）", "50");
-        etY = addField(root, "起点 Y（屏高百分比 0-100）", "50");
-        etAngle = addField(root, "角度（0-359，可任意斜向）", "90");
-        etDistance = addField(root, "距离（dp）", "400");
-        etDuration = addField(root, "滑动时长 ms（越小越快）", "500");
-        etInterval = addField(root, "间隔 ms", "500");
+        // 实时预览：让用户直观看到滑动会怎么走
+        addSection(root, "滑动预览（随参数实时更新）");
+        mPreview = new SwipePreviewView(this);
+        root.addView(mPreview, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(180)));
+
+        addSection(root, "滑动参数（点右侧「!」查看含义）");
+        etX = addField(root, "起点 X · 屏宽百分比 0–100", "50", INFO_X);
+        etY = addField(root, "起点 Y · 屏高百分比 0–100", "50", INFO_Y);
+        etAngle = addField(root, "角度 · 0–359（0右 90下 180左 270上）", "90", INFO_ANGLE);
+        etDistance = addField(root, "距离 · 1–4000 dp", "400", INFO_DISTANCE);
+        etDuration = addField(root, "滑动时长 · 50–60000 ms（越小越快）", "500", INFO_DURATION);
+        etInterval = addField(root, "间隔（固定）· 0–600000 ms", "500", INFO_INTERVAL);
+
+        cbIntervalRandom = new CheckBox(this);
+        cbIntervalRandom.setText("间隔随机：每次在最小~最大之间随机取值");
+        cbIntervalRandom.setOnCheckedChangeListener((b, v) -> refreshIntervalFieldsEnabled());
+        root.addView(cbIntervalRandom);
+        etIntervalMin = addField(root, "最小间隔 · 0–600000 ms", "200", INFO_INTERVAL_MIN);
+        etIntervalMax = addField(root, "最大间隔 · 0–600000 ms", "800", INFO_INTERVAL_MAX);
 
         cbRoundTrip = new CheckBox(this);
         cbRoundTrip.setText("往返滑动（到终点后滑回起点）");
+        cbRoundTrip.setOnCheckedChangeListener((b, v) -> refreshPreview());
         root.addView(cbRoundTrip);
-        etPause = addField(root, "往返停顿 ms", "200");
-        etCurve = addField(root, "轨迹弯曲幅度 dp（0=直线）", "0");
-        etLoops = addField(root, "循环次数（0=无限）", "0");
-        etMaxDur = addField(root, "运行时长上限（秒，0=不限，到时自动停）", "0");
-        etJitter = addField(root, "随机抖动强度 %（0=关闭；扰动起点/角度/距离/间隔）", "0");
+        etPause = addField(root, "往返停顿 · 0–60000 ms", "200", INFO_PAUSE);
+        etCurve = addField(root, "弯曲幅度 · -2000～2000 dp（0=直线）", "0", INFO_CURVE);
+        etLoops = addField(root, "循环次数 · 0–1000000（0=无限）", "0", INFO_LOOPS);
+        etMaxDur = addField(root, "运行时长上限 · 0–86400 秒（0=不限）", "0", INFO_MAX_DUR);
+        etJitter = addField(root, "随机抖动 · 0–100 %（0=关闭）", "0", INFO_JITTER);
+
+        // 预览随参数实时刷新
+        watch(etX); watch(etY); watch(etAngle); watch(etDistance); watch(etCurve);
+        refreshIntervalFieldsEnabled();
+        refreshPreview();
 
         Button btnPreset = new Button(this);
         btnPreset.setText("参数预设（保存 / 加载）");
@@ -357,6 +397,12 @@ public class MainActivity extends Activity {
         c.distanceDp = clampF(parseFloat(etDistance, c.distanceDp), 1f, 4000f);
         c.durationMs = clampL((long) parseLong(etDuration, c.durationMs), 50L, 60000L);
         c.intervalMs = clampL((long) parseLong(etInterval, c.intervalMs), 0L, 600000L);
+        c.intervalRandom = cbIntervalRandom.isChecked();
+        c.intervalMinMs = clampL(parseLong(etIntervalMin, c.intervalMinMs), 0L, 600000L);
+        c.intervalMaxMs = clampL(parseLong(etIntervalMax, c.intervalMaxMs), 0L, 600000L);
+        if (c.intervalMaxMs < c.intervalMinMs) {
+            long t = c.intervalMinMs; c.intervalMinMs = c.intervalMaxMs; c.intervalMaxMs = t;
+        }
         c.loops = (int) clampL(parseLong(etLoops, c.loops), 0L, 1000000L);
         c.roundTrip = cbRoundTrip.isChecked();
         c.pauseMs = clampL((long) parseLong(etPause, c.pauseMs), 0L, 60000L);
@@ -402,11 +448,16 @@ public class MainActivity extends Activity {
         etCurve.setText(fmtNum(c.curveDp));
         etMaxDur.setText(String.valueOf(c.maxDurationSec));
         etJitter.setText(fmtNum(c.jitterPercent));
+        cbIntervalRandom.setChecked(c.intervalRandom);
+        etIntervalMin.setText(String.valueOf(c.intervalMinMs));
+        etIntervalMax.setText(String.valueOf(c.intervalMaxMs));
         if (c.useShizuku) {
             rbShizuku.setChecked(true);
         } else {
             rbA11y.setChecked(true);
         }
+        refreshIntervalFieldsEnabled();
+        refreshPreview();
     }
 
     private static String fmtNum(float v) {
@@ -489,12 +540,21 @@ public class MainActivity extends Activity {
         root.addView(tv);
     }
 
-    private EditText addField(LinearLayout root, String label, String def) {
+    private EditText addField(LinearLayout root, String label, String def, String info) {
+        // 标签行：左侧名称（含取值范围），右侧可点击的「!」提示图标
+        LinearLayout labelRow = new LinearLayout(this);
+        labelRow.setOrientation(LinearLayout.HORIZONTAL);
+        labelRow.setGravity(Gravity.CENTER_VERTICAL);
+        labelRow.setPadding(0, dp(6), 0, dp(2));
+
         TextView tv = new TextView(this);
         tv.setText(label);
         tv.setTextSize(14f);
-        tv.setPadding(0, dp(6), 0, dp(2));
-        root.addView(tv);
+        labelRow.addView(tv, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        labelRow.addView(makeInfoIcon(info), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(labelRow);
 
         EditText et = new EditText(this);
         et.setText(def);
@@ -503,6 +563,52 @@ public class MainActivity extends Activity {
         et.setPadding(dp(10), dp(8), dp(10), dp(8));
         root.addView(et, fullWidth(et));
         return et;
+    }
+
+    /** 生成一个可点击的「!」图标，点击弹出该参数的详细说明。 */
+    private View makeInfoIcon(String infoText) {
+        ImageView iv = new ImageView(this);
+        iv.setImageResource(R.drawable.ic_info_circle);
+        int pad = dp(5);
+        iv.setPadding(pad, pad, pad, pad);
+        iv.setClickable(true);
+        iv.setFocusable(true);
+        iv.setContentDescription("参数说明");
+        iv.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle("参数说明")
+                .setMessage(infoText)
+                .setPositiveButton("知道了", null)
+                .show());
+        return iv;
+    }
+
+    /** 监听输入框变化，实时刷新预览图。 */
+    private void watch(EditText et) {
+        et.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(Editable s) { refreshPreview(); }
+        });
+    }
+
+    /** 读取当前输入，更新预览图。 */
+    private void refreshPreview() {
+        if (mPreview == null || etX == null) return;
+        float x = parseFloat(etX, 50f);
+        float y = parseFloat(etY, 50f);
+        float ang = parseFloat(etAngle, 90f);
+        float dist = parseFloat(etDistance, 400f);
+        float curve = parseFloat(etCurve, 0f);
+        mPreview.update(x, y, ang, dist, curve, cbRoundTrip.isChecked());
+    }
+
+    /** 根据「间隔随机」开关启用/禁用相关输入框。 */
+    private void refreshIntervalFieldsEnabled() {
+        if (cbIntervalRandom == null) return;
+        boolean rnd = cbIntervalRandom.isChecked();
+        etInterval.setEnabled(!rnd);
+        etIntervalMin.setEnabled(rnd);
+        etIntervalMax.setEnabled(rnd);
     }
 
     private LinearLayout.LayoutParams fullWidth(View v) {
