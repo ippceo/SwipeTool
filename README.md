@@ -4,7 +4,7 @@
 
 ![Build APK](https://github.com/ippceo/SwipeTool/actions/workflows/build.yml/badge.svg)
 ![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84)
-![Version](https://img.shields.io/badge/version-1.7.0-blue)
+![Version](https://img.shields.io/badge/version-1.7.1-blue)
 
 > 适用场景：长页面自动滚动、阅读翻页、演示 / 手势测试等中性自动化辅助。
 > 请勿用于绕过平台风控、刷量或任何违反第三方服务条款的用途（见文末免责声明）。
@@ -174,6 +174,7 @@ A：把「随机抖动」调到 30–60，再把「距离下限 / 上限」拉�
 - 产物：Actions artifact 为 `SwipeTool-<版本号>-debug.apk` 与 `SwipeTool-<版本号>.apk`
 - 发布：**推送 `v*` tag** 时自动创建 GitHub Release，附件名为 `SwipeTool-<版本号>.apk`
 - 签名：release 使用固定签名密钥。CI 通过 GitHub Secrets（`KEYSTORE_BASE64` / `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD`）注入；未配置时回退 debug 签名（版本间签名会不一致，仅供本地调试）
+- 混淆：release 开启 R8 代码混淆 + 资源压缩，APK 约 47 KB；Shizuku UserService 与 AIDL 已在 `proguard-rules.pro` 中保留必要类名与构造函数
 - 环境：JDK 17 + 预装 Android SDK（`platforms;android-34`、`build-tools;34.0.0`）+ Gradle 8.7（构建时下载，不依赖 `gradle-wrapper.jar`）；依赖走阿里云 Maven 镜像，避免 Maven Central 限流
 
 ## 本地构建（可选）
@@ -196,8 +197,8 @@ SwipeTool/
 ├── .github/workflows/build.yml          # 云端编译 debug + release APK，打 tag 时发布 Release
 ├── .trae/rules/project_rules.md         # 维护者协作规则（发布流程等）
 ├── app/
-│   ├── build.gradle                     # 模块配置（compileSdk 34 / minSdk 24，含 Shizuku 依赖与 AIDL）
-│   ├── proguard-rules.pro
+│   ├── build.gradle                     # 模块配置（compileSdk 34 / minSdk 24，含 Shizuku 依赖与 AIDL；release 开启 R8）
+│   ├── proguard-rules.pro               # R8 保留规则（Shizuku UserService / AIDL）
 │   └── src/main/
 │       ├── AndroidManifest.xml
 │       ├── aidl/com/example/swipetool/

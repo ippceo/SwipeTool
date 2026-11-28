@@ -10,8 +10,8 @@ android {
         applicationId "com.example.swipetool"
         minSdk 24
         targetSdk 34
-        versionCode 10
-        versionName "1.7.0"
+        versionCode 11
+        versionName "1.7.1"
     }
 
     buildFeatures {
@@ -34,7 +34,10 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            // R8 混淆 + 资源压缩：release APK 由 ~74KB 降到 ~47KB。
+            // 已为 Shizuku UserService / AIDL 保留必要类，详见 proguard-rules.pro。
+            minifyEnabled true
+            shrinkResources true
             // 有固定 keystore 用它签名（保证版本间签名一致、可覆盖升级）；
             // 否则回退 debug 签名，方便本地无密钥构建。
             signingConfig System.getenv("KEYSTORE_FILE")
