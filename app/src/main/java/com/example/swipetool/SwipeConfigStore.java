@@ -11,7 +11,9 @@ import android.content.SharedPreferences;
 public final class SwipeConfigStore {
 
     private static final String PREF = "swipe_config";
-    private static final String KEY_VERSION = "configVersion";
+    /** 版本号按槽位存储，避免「另存到别的槽」把默认槽的迁移标记提前置位。
+     *  使用新键名，避开 1.6.0 曾写过的全局 configVersion。 */
+    private static final String KEY_VERSION = "slotConfigVersion";
     private static final int CONFIG_VERSION = 2;
 
     private SwipeConfigStore() {
@@ -62,24 +64,33 @@ public final class SwipeConfigStore {
                 .putBoolean(p + "useShizuku", c.useShizuku)
                 .putLong(p + "maxDurationSec", c.maxDurationSec)
                 .putFloat(p + "jitterPercent", c.jitterPercent)
-                .putInt(KEY_VERSION, CONFIG_VERSION)
+                .putInt(p + KEY_VERSION, CONFIG_VERSION)
                 .apply();
     }
 
     private static SwipeConfig loadFrom(Context ctx, String p) {
         SharedPreferences sp = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE);
         SwipeConfig c = new SwipeConfig();
-        int version = sp.getInt(KEY_VERSION, 0);
+        int version = sp.getInt(p + KEY_VERSION, 0);
+        // 1.6.0 已经保存过的槽位会带有 distanceMinDp，说明用户明确保存过，
+        // 不再强制改写其抖动值（尊重用户主动设为 0 的选择）。
+        boolean savedByNewFormat = sp.contains(p + "distanceMinDp");
 
         c.xPercent = sp.getFloat(p + "xPercent", c.xPercent);
         c.yPercent = sp.getFloat(p + "yPercent", c.yPercent);
         c.angle = sp.getFloat(p + "angle", c.angle);
-        // 旧版本只有一个固定距离，迁移成「下限 = 上限」，保留用户原来的长度
+        // 旧版本只有一个固定距离：迁移成该值 ±20% 的随机区间，
+        // 既保留用户原来的长度量级，又能直接看到长度随机效果。
         float legacyDistance = sp.getFloat(p + "distanceDp", -1f);
-        c.distanceMinDp = sp.getFloat(p + "distanceMinDp",
-                legacyDistance > 0f ? legacyDistance : c.distanceMinDp);
-        c.distanceMaxDp = sp.getFloat(p + "distanceMaxDp",
-                legacyDistance > 0f ? legacyDistance : c.distanceMaxDp);
+        if (legacyDistance > 0f) {
+            float lo = Math.max(1f, legacyDistance * 0.8f);
+            float hi = Math.max(lo, legacyDistance * 1.2f);
+            c.distanceMinDp = sp.getFloat(p + "distanceMinDp", lo);
+            c.distanceMaxDp = sp.getFloat(p + "distanceMaxDp", hi);
+        } else {
+            c.distanceMinDp = sp.getFloat(p + "distanceMinDp", c.distanceMinDp);
+            c.distanceMaxDp = sp.getFloat(p + "distanceMaxDp", c.distanceMaxDp);
+        }
         c.durationMs = sp.getLong(p + "durationMs", c.durationMs);
         c.intervalMs = sp.getLong(p + "intervalMs", c.intervalMs);
         c.intervalRandom = sp.getBoolean(p + "intervalRandom", c.intervalRandom);
@@ -94,7 +105,7 @@ public final class SwipeConfigStore {
         c.jitterPercent = sp.getFloat(p + "jitterPercent", c.jitterPercent);
 
         // 旧版本默认不抖动，升级后给一个明显可见的默认随机强度
-        if (version < CONFIG_VERSION && c.jitterPercent <= 0f) {
+        if (version < CONFIG_VERSION && !savedByNewFormat && c.jitterPercent <= 0f) {
             c.jitterPercent = SwipeConfig.DEFAULT_JITTER;
         }
         return c;

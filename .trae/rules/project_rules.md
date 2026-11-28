@@ -11,8 +11,8 @@
 3. 提交并推送 `master`：`git push origin HEAD:master`。
 4. 打标签并推送触发 GitHub Release：`git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`。
    - 仓库的 `.github/workflows/build.yml` 仅在推送 `v*` 标签时才执行 `Create GitHub Release`，
-     会附带编译好的 `app-release.apk`。只推 `master` 只会构建、不会发布 Release。
-5. 用 GitHub API 确认：Actions run 为 `completed / success`，且 `releases/tags/vX.Y.Z` 已存在并带 `app-release.apk`。
+     会附带编译好的、带版本号的 `SwipeTool-X.Y.Z.apk`。只推 `master` 只会构建、不会发布 Release。
+5. 用 GitHub API 确认：Actions run 为 `completed / success`，且 `releases/tags/vX.Y.Z` 已存在并带 `SwipeTool-X.Y.Z.apk`。
 
 ## 说明
 

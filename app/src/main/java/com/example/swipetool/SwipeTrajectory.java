@@ -62,8 +62,8 @@ final class SwipeTrajectory {
         sx = clamp(sx, 1f, width - 1f);
         sy = clamp(sy, 1f, height - 1f);
 
-        float minDp = Math.min(c.distanceMinDp, c.distanceMaxDp);
-        float maxDp = Math.max(c.distanceMinDp, c.distanceMaxDp);
+        float minDp = Math.max(1f, Math.min(c.distanceMinDp, c.distanceMaxDp));
+        float maxDp = Math.max(minDp, Math.max(c.distanceMinDp, c.distanceMaxDp));
         float distancePx = (minDp + random.nextFloat() * (maxDp - minDp)) * density;
 
         float angle = c.angle;

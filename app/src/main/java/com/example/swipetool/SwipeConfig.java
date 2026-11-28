@@ -43,7 +43,7 @@ public class SwipeConfig {
     /**
      * 随机抖动强度 0-100（%）：
      * 影响起点偏移、方向角、弯曲幅度与轨迹摆动，同时叠加到间隔上。
-     * 0 表示完全按固定参数执行。
+     * 0 表示关闭这些随机，仅保留「距离下限~上限」的长度随机。
      */
     public float jitterPercent = DEFAULT_JITTER;
 

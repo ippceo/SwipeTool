@@ -61,7 +61,7 @@ public class MainActivity extends Activity {
     private static final String INFO_CURVE = "轨迹的基础弯曲幅度，0 为直线；正数向一侧弯曲，负数向另一侧弯曲，单位 dp。开启随机抖动后，每次还会在此基础上随机偏转，形成歪歪扭扭的走势。仅无障碍方式支持曲线，Shizuku 方式恒为直线。";
     private static final String INFO_LOOPS = "总共执行多少次滑动。0 表示无限循环，直到手动停止或达到「运行时长上限」。";
     private static final String INFO_MAX_DUR = "滑动运行多久后自动停止，单位秒。0 表示不限制，可防止忘记关闭。";
-    private static final String INFO_JITTER = "拟人化随机强度（百分比）。0 = 完全按固定参数执行；数值越大，每次滑动的起点、方向、长度、弯曲和轨迹摆动越随机，连续操作看起来更像真人手指。会把轨迹画成略带摆动的曲线。";
+    private static final String INFO_JITTER = "拟人化随机强度（百分比）。0 = 关闭起点 / 方向 / 弯曲 / 摆动的随机；滑动长度仍会在「距离下限 ~ 上限」之间随机（两者相等时才是固定长度）。数值越大，连续操作看起来越像真人手指。";
 
     private final Handler mStatusHandler = new Handler(Looper.getMainLooper());
     private final Runnable mStatusTicker = new Runnable() {

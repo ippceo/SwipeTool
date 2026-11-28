@@ -4,7 +4,7 @@
 
 ![Build APK](https://github.com/ippceo/SwipeTool/actions/workflows/build.yml/badge.svg)
 ![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84)
-![Version](https://img.shields.io/badge/version-1.6-blue)
+![Version](https://img.shields.io/badge/version-1.6.1-blue)
 
 > 适用场景：长页面自动滚动、阅读翻页、演示 / 手势测试等中性自动化辅助。
 > 请勿用于绕过平台风控、刷量或任何违反第三方服务条款的用途（见文末免责声明）。
@@ -13,7 +13,7 @@
 
 ## 快速开始
 
-1. **安装**：从 [Releases](https://github.com/ippceo/SwipeTool/releases) 下载最新的 `app-release.apk` 安装（允许「未知来源安装」）。
+1. **安装**：从 [Releases](https://github.com/ippceo/SwipeTool/releases) 下载最新的 `SwipeTool-<版本号>.apk` 安装（允许「未知来源安装」）。
 2. **授权执行方式**（二选一）：
    - **无障碍服务**（推荐，功能最全）：打开 App → 点「1a. 开启无障碍权限」→ 在系统设置中打开「屏幕滑动工具」开关。
    - **Shizuku**：先安装并启动 [Shizuku](https://shizuku.rikka.app/download/)，回到 App 点「1b. 检查 / 授权 Shizuku」并允许授权。
@@ -84,7 +84,7 @@
 | 弯曲 | 在基础弯曲上再叠加 ±`j × 70 dp` 的随机偏转 |
 | 轨迹摆动 | 路径分成 5~8 段，沿垂直方向叠加随机摆动（约路径长度的 `j × 6%`） |
 
-例如抖动设为 `40`，起点会在屏幕短边 ±2.4% 内浮动、方向 ±8.8°、弯曲 ±28 dp，轨迹本身也会歪歪扭扭，而不是一条标准直线。设为 `0` 即完全按固定参数执行。Shizuku 方式受 `input swipe` 限制只能直线，但起点、终点和长度仍会随机。
+例如抖动设为 `40`，起点会在屏幕短边 ±2.4% 内浮动、方向 ±8.8°、弯曲 ±28 dp，轨迹本身也会歪歪扭扭，而不是一条标准直线。设为 `0` 时关闭起点 / 方向 / 弯曲 / 摆动随机，但长度仍会在「距离下限 ~ 上限」内随机；把上下限填成同一个值即可完全固定。Shizuku 方式受 `input swipe` 限制只能直线，但起点、终点和长度仍会随机。
 
 ### 随机间隔
 
@@ -94,7 +94,7 @@
 
 ## 安装
 
-- **推荐**：从 [Releases](https://github.com/ippceo/SwipeTool/releases) 下载最新的 `app-release.apk` 直接安装。
+- **推荐**：从 [Releases](https://github.com/ippceo/SwipeTool/releases) 下载最新的 `SwipeTool-<版本号>.apk` 直接安装。
 - 也可从 [Actions](https://github.com/ippceo/SwipeTool/actions) 下载构建产物（debug / release APK）。
 - 均为统一的固定密钥签名（release 使用项目专用签名密钥），**同一签名**，版本之间可直接覆盖升级，不需要卸载。
 - 系统要求：Android 7.0（API 24）及以上。
@@ -157,7 +157,7 @@ A：这是预期行为——滑动在当前前台屏幕执行。请使用悬浮�
 A：受系统 `input swipe` 能力限制，Shizuku 只能直线滑动；需要往返 / 曲线请切换到无障碍方式。
 
 **Q：连续滑动轨迹太固定 / 想更随机？**
-A：把「随机抖动」调到 30–60，再把「距离下限 / 上限」拉开一点；抖动为 0 时才会完全固定。
+A：把「随机抖动」调到 30–60，再把「距离下限 / 上限」拉开一点；抖动为 0 且上下限相同时才会完全固定。
 
 ---
 
@@ -167,8 +167,8 @@ A：把「随机抖动」调到 30–60，再把「距离下限 / 上限」拉�
 
 - 工作流：`.github/workflows/build.yml`
 - 触发：向 `master` / `main` 分支 push，推送 `v*` tag，或在 Actions 页面手动 `Run workflow`
-- 产物：`app/build/outputs/apk/debug/app-debug.apk` 与 `app/build/outputs/apk/release/app-release.apk`，分别上传为 artifact
-- 发布：**推送 `v*` tag** 时自动创建 GitHub Release 并附上 release APK
+- 产物：Actions artifact 为 `SwipeTool-<版本号>-debug.apk` 与 `SwipeTool-<版本号>.apk`
+- 发布：**推送 `v*` tag** 时自动创建 GitHub Release，附件名为 `SwipeTool-<版本号>.apk`
 - 签名：release 使用固定签名密钥。CI 通过 GitHub Secrets（`KEYSTORE_BASE64` / `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD`）注入；未配置时回退 debug 签名（版本间签名会不一致，仅供本地调试）
 - 环境：JDK 17 + 预装 Android SDK（`platforms;android-34`、`build-tools;34.0.0`）+ Gradle 8.7（构建时下载，不依赖 `gradle-wrapper.jar`）；依赖走阿里云 Maven 镜像，避免 Maven Central 限流
 

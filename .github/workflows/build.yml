@@ -89,9 +89,9 @@ jobs:
 
       - name: Rename APKs with version
         run: |
-          # 标签构建用标签版本（去掉前缀 v）；分支构建回退到 build.gradle 的 versionName
-          if [[ "${GITHUB_REF_NAME}" == v* ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
+          # 仅标签构建取标签版本（v1.6.1 -> 1.6.1）；分支构建回退到 build.gradle 的 versionName
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
           else
             VERSION="$(sed -n 's/^[[:space:]]*versionName[[:space:]]*"\(.*\)".*/\1/p' app/build.gradle | head -n1)"
           fi
