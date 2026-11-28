@@ -64,6 +64,9 @@ public final class SwipeConfigStore {
                 .putBoolean(p + "useShizuku", c.useShizuku)
                 .putLong(p + "maxDurationSec", c.maxDurationSec)
                 .putFloat(p + "jitterPercent", c.jitterPercent)
+                .putBoolean(p + "useRecorded", c.useRecorded)
+                .putString(p + "recordedId", c.recordedId)
+                .putString(p + "recordedName", c.recordedName)
                 .putInt(p + KEY_VERSION, CONFIG_VERSION)
                 .apply();
     }
@@ -103,6 +106,9 @@ public final class SwipeConfigStore {
         c.useShizuku = sp.getBoolean(p + "useShizuku", c.useShizuku);
         c.maxDurationSec = sp.getLong(p + "maxDurationSec", c.maxDurationSec);
         c.jitterPercent = sp.getFloat(p + "jitterPercent", c.jitterPercent);
+        c.useRecorded = sp.getBoolean(p + "useRecorded", c.useRecorded);
+        c.recordedId = sp.getString(p + "recordedId", c.recordedId);
+        c.recordedName = sp.getString(p + "recordedName", c.recordedName);
 
         // 旧版本默认不抖动，升级后给一个明显可见的默认随机强度
         if (version < CONFIG_VERSION && !savedByNewFormat && c.jitterPercent <= 0f) {

@@ -37,15 +37,22 @@ import rikka.shizuku.Shizuku;
 public class MainActivity extends Activity {
 
     private static final int REQ_SHIZUKU = 1001;
+    private static final int REQ_RECORD = 1002;
 
     private EditText etX, etY, etAngle, etDistMin, etDistMax, etDuration, etInterval, etLoops, etPause,
             etCurve, etMaxDur, etJitter, etIntervalMin, etIntervalMax;
-    private CheckBox cbRoundTrip, cbIntervalRandom;
+    private CheckBox cbRoundTrip, cbIntervalRandom, cbUseRecorded;
     private Button btnStart, btnStop;
-    private TextView tvStatus;
+    private TextView tvStatus, tvRecorded;
     private RadioGroup rgMode;
     private RadioButton rbA11y, rbShizuku;
     private SwipePreviewView mPreview;
+
+    /** 当前选中的录制序列（界面状态，保存后持久化到 SwipeConfig）。 */
+    private String mRecordedId = "";
+    private String mRecordedName = "";
+    /** 正在批量回填界面时，抑制开关监听里的提示。 */
+    private boolean mApplyingConfig = false;
 
     // 各参数「!」提示气泡的说明文案
     private static final String INFO_X = "滑动起点的横坐标，按屏幕宽度百分比定位。0 = 屏幕最左边，100 = 最右边，50 = 水平居中。会与「随机抖动」叠加做小幅扰动。";
@@ -62,6 +69,7 @@ public class MainActivity extends Activity {
     private static final String INFO_LOOPS = "总共执行多少次滑动。0 表示无限循环，直到手动停止或达到「运行时长上限」。";
     private static final String INFO_MAX_DUR = "滑动运行多久后自动停止，单位秒。0 表示不限制，可防止忘记关闭。";
     private static final String INFO_JITTER = "拟人化随机强度（百分比）。0 = 关闭起点 / 方向 / 弯曲 / 摆动的随机；滑动长度仍会在「距离下限 ~ 上限」之间随机（两者相等时才是固定长度）。数值越大，连续操作看起来越像真人手指。";
+    private static final String INFO_RECORDED = "开启后不再按上面的参数生成滑动，而是原样回放你录制的轨迹（可包含多笔）。录制会保留真实的采样点与时间，因此能重现人手滑动时的抖动和弯曲。仅支持「无障碍服务」方式，Shizuku 无法回放曲线与多笔轨迹。";
 
     private final Handler mStatusHandler = new Handler(Looper.getMainLooper());
     private final Runnable mStatusTicker = new Runnable() {
@@ -227,6 +235,63 @@ public class MainActivity extends Activity {
         watch(etCurve); watch(etJitter);
         refreshIntervalFieldsEnabled();
         refreshPreview();
+
+        addSection(root, "录制滑动序列（真人轨迹回放）");
+        LinearLayout recordToggleRow = new LinearLayout(this);
+        recordToggleRow.setOrientation(LinearLayout.HORIZONTAL);
+        recordToggleRow.setGravity(Gravity.CENTER_VERTICAL);
+        cbUseRecorded = new CheckBox(this);
+        cbUseRecorded.setText("使用录制序列回放（替代按参数生成的滑动）");
+        cbUseRecorded.setOnCheckedChangeListener((b, checked) -> {
+            if (checked && rbShizuku.isChecked()) {
+                rbA11y.setChecked(true);
+                if (!mApplyingConfig) {
+                    Toast.makeText(this, "录制序列回放仅支持无障碍方式，已切换",
+                            Toast.LENGTH_SHORT).show();
+                }
+            }
+            if (checked && mRecordedId.isEmpty() && !mApplyingConfig) {
+                Toast.makeText(this, "请先录制或选择一个序列", Toast.LENGTH_SHORT).show();
+            }
+            updateRecordedLabel();
+            refreshStatus();
+        });
+        recordToggleRow.addView(cbUseRecorded, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        recordToggleRow.addView(makeInfoIcon(INFO_RECORDED), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(recordToggleRow);
+
+        tvRecorded = new TextView(this);
+        tvRecorded.setTextSize(14f);
+        tvRecorded.setTextColor(0xFF555555);
+        tvRecorded.setPadding(0, dp(2), 0, dp(4));
+        root.addView(tvRecorded);
+
+        LinearLayout recordRow1 = new LinearLayout(this);
+        recordRow1.setOrientation(LinearLayout.HORIZONTAL);
+        Button btnRecord = new Button(this);
+        btnRecord.setText("录制新序列…");
+        btnRecord.setOnClickListener(v -> startActivityForResult(
+                new Intent(this, RecordActivity.class), REQ_RECORD));
+        Button btnRecordList = new Button(this);
+        btnRecordList.setText("序列列表 / 删除…");
+        btnRecordList.setOnClickListener(v -> showRecordListDialog());
+        recordRow1.addView(btnRecord, weight());
+        recordRow1.addView(btnRecordList, weight());
+        root.addView(recordRow1);
+
+        Button btnRecordPreview = new Button(this);
+        btnRecordPreview.setText("试放一次选中的序列");
+        btnRecordPreview.setOnClickListener(v -> previewRecorded());
+        root.addView(btnRecordPreview, fullWidth(btnRecordPreview));
+
+        TextView recordHint = new TextView(this);
+        recordHint.setText("录制会在本机保存归一化坐标与时间戳；回放时按原轨迹发送触摸事件，"
+                + "并沿用上面的「循环次数 / 间隔 / 运行时长上限」。");
+        recordHint.setTextSize(12f);
+        recordHint.setTextColor(0xFF777777);
+        root.addView(recordHint);
 
         Button btnSave = new Button(this);
         btnSave.setText("保存当前参数（悬浮球 / 下次启动使用）");
@@ -399,9 +464,134 @@ public class MainActivity extends Activity {
             }
         }
 
+        if (canStart && cbUseRecorded != null && cbUseRecorded.isChecked()
+                && (mRecordedId == null || mRecordedId.isEmpty())) {
+            status = "状态：请先录制或选择要回放的序列";
+            canStart = false;
+        }
+
         tvStatus.setText(status);
         btnStart.setEnabled(canStart);
         btnStop.setEnabled(canStop);
+    }
+
+    /** 刷新「当前选中的录制序列」提示文字。 */
+    private void updateRecordedLabel() {
+        if (tvRecorded == null) return;
+        if (mRecordedId == null || mRecordedId.isEmpty()) {
+            tvRecorded.setText("当前序列：未选择（点「录制新序列…」或「序列列表」）");
+        } else {
+            tvRecorded.setText("当前序列：" + (mRecordedName.isEmpty() ? mRecordedId : mRecordedName));
+        }
+    }
+
+    /** 弹出录制序列列表：点选即启用，可进入删除流程。 */
+    private void showRecordListDialog() {
+        final java.util.List<RecordedSequence> all = RecordedSwipeStore.list(this);
+        if (all.isEmpty()) {
+            Toast.makeText(this, "还没有录制序列，请先点「录制新序列…」", Toast.LENGTH_LONG).show();
+            return;
+        }
+        final String[] items = new String[all.size()];
+        for (int i = 0; i < all.size(); i++) {
+            RecordedSequence s = all.get(i);
+            items[i] = s.name + "（" + s.strokes.size() + " 笔 · "
+                    + String.format(java.util.Locale.US, "%.1f", s.totalDurationMs() / 1000f)
+                    + " 秒）";
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("选择要回放的序列")
+                .setItems(items, (d, which) -> {
+                    RecordedSequence s = all.get(which);
+                    mRecordedId = s.id;
+                    mRecordedName = s.name;
+                    cbUseRecorded.setChecked(true);
+                    updateRecordedLabel();
+                    refreshStatus();
+                    Toast.makeText(this, "已选择：" + s.name, Toast.LENGTH_SHORT).show();
+                })
+                .setNeutralButton("删除…", (d, w) -> showDeleteRecordDialog(all))
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void showDeleteRecordDialog(final java.util.List<RecordedSequence> all) {
+        final String[] names = new String[all.size()];
+        for (int i = 0; i < all.size(); i++) {
+            names[i] = all.get(i).name;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("勾选要删除的序列")
+                .setMultiChoiceItems(names, null, null)
+                .setPositiveButton("删除", (d, w) -> {
+                    AlertDialog ad = (AlertDialog) d;
+                    android.util.SparseBooleanArray checked = ad.getListView()
+                            .getCheckedItemPositions();
+                    int removed = 0;
+                    for (int i = 0; i < all.size(); i++) {
+                        if (!checked.get(i)) continue;
+                        String id = all.get(i).id;
+                        if (RecordedSwipeStore.delete(this, id)) removed++;
+                        if (id.equals(mRecordedId)) {
+                            mRecordedId = "";
+                            mRecordedName = "";
+                            cbUseRecorded.setChecked(false);
+                        }
+                    }
+                    updateRecordedLabel();
+                    refreshStatus();
+                    Toast.makeText(this, "已删除 " + removed + " 个序列",
+                            Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /** 立刻回放一次当前选中的序列（仅用于验证效果）。 */
+    private void previewRecorded() {
+        if (mRecordedId == null || mRecordedId.isEmpty()) {
+            Toast.makeText(this, "请先录制或选择一个序列", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!isAccessibilityEnabled() || !SwipeAccessibilityService.isConnected()) {
+            Toast.makeText(this, "试放需要无障碍权限，请先开启", Toast.LENGTH_LONG).show();
+            return;
+        }
+        RecordedSequence seq = RecordedSwipeStore.find(this, mRecordedId);
+        if (seq == null) {
+            Toast.makeText(this, "序列已不存在，请重新选择", Toast.LENGTH_SHORT).show();
+            mRecordedId = "";
+            mRecordedName = "";
+            updateRecordedLabel();
+            return;
+        }
+        SwipeConfig c = collectConfig();
+        c.useRecorded = true;
+        c.useShizuku = false;
+        c.loops = 1;
+        c.intervalMs = 0L;
+        c.intervalRandom = false;
+        c.maxDurationSec = 0L;
+        SwipeAccessibilityService.start(c);
+        Toast.makeText(this, "正在试放 1 次：" + seq.name, Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_RECORD && resultCode == RESULT_OK && data != null) {
+            String id = data.getStringExtra(RecordActivity.EXTRA_ID);
+            String name = data.getStringExtra(RecordActivity.EXTRA_NAME);
+            if (id != null && !id.isEmpty()) {
+                mRecordedId = id;
+                mRecordedName = name == null ? "" : name;
+                cbUseRecorded.setChecked(true);
+                updateRecordedLabel();
+                refreshStatus();
+                Toast.makeText(this, "已选用录制序列，点「保存」后悬浮球生效",
+                        Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     private SwipeConfig collectConfig() {
@@ -428,6 +618,9 @@ public class MainActivity extends Activity {
         c.curveDp = clampF(parseFloat(etCurve, c.curveDp), -2000f, 2000f);
         c.maxDurationSec = clampL(parseLong(etMaxDur, c.maxDurationSec), 0L, 86400L);
         c.jitterPercent = clampF(parseFloat(etJitter, c.jitterPercent), 0f, 100f);
+        c.useRecorded = cbUseRecorded != null && cbUseRecorded.isChecked();
+        c.recordedId = mRecordedId;
+        c.recordedName = mRecordedName;
         c.useShizuku = useShizukuMode();
         return c;
     }
@@ -480,7 +673,13 @@ public class MainActivity extends Activity {
         cbIntervalRandom.setChecked(c.intervalRandom);
         etIntervalMin.setText(String.valueOf(c.intervalMinMs));
         etIntervalMax.setText(String.valueOf(c.intervalMaxMs));
-        if (c.useShizuku) {
+        mRecordedId = c.recordedId == null ? "" : c.recordedId;
+        mRecordedName = c.recordedName == null ? "" : c.recordedName;
+        mApplyingConfig = true;
+        cbUseRecorded.setChecked(c.useRecorded);
+        mApplyingConfig = false;
+        updateRecordedLabel();
+        if (c.useShizuku && !c.useRecorded) {
             rbShizuku.setChecked(true);
         } else {
             rbA11y.setChecked(true);
@@ -499,6 +698,22 @@ public class MainActivity extends Activity {
     private void startSwipe() {
         // 直接使用界面上的当前参数执行；是否持久化由「保存」按钮决定
         SwipeConfig c = collectConfig();
+
+        if (c.useRecorded) {
+            if (!isAccessibilityEnabled() || !SwipeAccessibilityService.isConnected()) {
+                Toast.makeText(this, "录制序列回放需要无障碍权限，请先开启",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (c.recordedId.isEmpty() || RecordedSwipeStore.find(this, c.recordedId) == null) {
+                Toast.makeText(this, "请先录制或选择要回放的序列", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            SwipeAccessibilityService.start(c);
+            Toast.makeText(this, "开始回放录制序列", Toast.LENGTH_SHORT).show();
+            refreshStatus();
+            return;
+        }
 
         if (c.useShizuku) {
             if (!ShizukuSwipeEngine.isAvailable()) {

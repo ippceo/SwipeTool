@@ -23,6 +23,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".RecordActivity"
+            android:exported="false"
+            android:windowSoftInputMode="stateHidden" />
+
         <service
             android:name=".SwipeAccessibilityService"
             android:exported="true"

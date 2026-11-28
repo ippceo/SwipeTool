@@ -2,6 +2,7 @@ package com.example.swipetool;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.graphics.Path;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -9,6 +10,9 @@ import android.util.DisplayMetrics;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.WindowManager;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -28,6 +32,15 @@ public class SwipeAccessibilityService extends AccessibilityService {
     private boolean mRunning = false;
     private int mDoneCount = 0;
     private long mStartTime = 0L;
+    /** 上一轮手势实际占用的时长（毫秒），用于计算循环间隔（录制序列时长不固定）。 */
+    private long mLastGestureSpanMs = 0L;
+    /** 已调度但尚未执行的录制批次，停止时需要一并取消。 */
+    private final List<Runnable> mPendingBatches = new ArrayList<>();
+
+    /** 系统单次手势最多包含的笔画数，超出需要分批发送。 */
+    private static final int MAX_STROKES_PER_GESTURE = 10;
+    /** 系统单次手势的最长时长（毫秒）。 */
+    private static final long MAX_GESTURE_DURATION_MS = 60000L;
 
     private final Runnable mSwipeRunnable = new Runnable() {
         @Override
@@ -54,10 +67,12 @@ public class SwipeAccessibilityService extends AccessibilityService {
                 stop();
                 return;
             }
-            // 一次完整循环耗时：往返时含去程+停顿+回程，再加本次间隔。
-            long gestureSpan = mConfig.roundTrip
+            // 一次完整循环耗时：往返时含去程+停顿+回程；录制序列则取该序列总时长。
+            long gestureSpan = mLastGestureSpanMs > 0L
+                    ? mLastGestureSpanMs
+                    : (mConfig.roundTrip
                     ? (mConfig.durationMs * 2L + mConfig.pauseMs)
-                    : mConfig.durationMs;
+                    : mConfig.durationMs);
             // 间隔：固定值，或在「最小~最大」之间随机（再叠加抖动扰动）
             long interval = SwipeConfig.resolveInterval(mConfig);
             long cycle = gestureSpan + interval + 50L; // 50ms 余量，避免手势重叠
@@ -126,13 +141,23 @@ public class SwipeAccessibilityService extends AccessibilityService {
     private void stopInternal() {
         mRunning = false;
         mHandler.removeCallbacks(mSwipeRunnable);
+        clearPendingBatches();
     }
 
     /**
-     * 发送一次滑动手势。起点、长度、方向与弯曲都在这里重新随机，
-     * 轨迹本身带横向摆动，不会每次都是一模一样的直线。
+     * 发送一次滑动手势。启用录制序列时按人手的真实轨迹回放；
+     * 否则起点、长度、方向与弯曲都在这里重新随机，轨迹本身带横向摆动。
      */
     private boolean swipeOnce(SwipeConfig c) {
+        if (c.useRecorded) {
+            RecordedSequence seq = RecordedSwipeStore.find(this, c.recordedId);
+            if (seq != null && !seq.strokes.isEmpty()) {
+                mLastGestureSpanMs = Math.max(1L, seq.totalDurationMs());
+                return playSequence(seq);
+            }
+            // 录制数据丢失（被删除 / 未选择）时回退到参数滑动，避免直接停住
+        }
+
         DisplayMetrics dm = new DisplayMetrics();
         WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         if (wm == null) return false;
@@ -150,11 +175,89 @@ public class SwipeAccessibilityService extends AccessibilityService {
             long returnStart = c.durationMs + c.pauseMs;
             builder.addStroke(new GestureDescription.StrokeDescription(
                     trajectory.buildPath(random, true), returnStart, c.durationMs));
+            mLastGestureSpanMs = c.durationMs * 2L + c.pauseMs;
         } else {
             builder.addStroke(new GestureDescription.StrokeDescription(
                     trajectory.buildPath(random, false), 0, c.durationMs));
+            mLastGestureSpanMs = c.durationMs;
         }
 
         return dispatchGesture(builder.build(), null, mHandler);
+    }
+
+    /**
+     * 回放一整段录制序列：每一笔按其录制时的启动时间与持续时间发送，
+     * 路径由密集的归一化采样点映射到当前屏幕，保留人手自然的抖动。
+     * 系统单次手势最多 10 笔，超过时按时间顺序分批发送。
+     */
+    private boolean playSequence(RecordedSequence seq) {
+        DisplayMetrics dm = new DisplayMetrics();
+        WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+        if (wm == null) return false;
+        wm.getDefaultDisplay().getMetrics(dm);
+        final int w = dm.widthPixels;
+        final int h = dm.heightPixels;
+
+        List<RecordedSequence.Stroke> strokes = new ArrayList<>();
+        for (RecordedSequence.Stroke s : seq.strokes) {
+            if (s.points.size() >= 2) strokes.add(s);
+        }
+        if (strokes.isEmpty()) return false;
+        Collections.sort(strokes, (a, b) -> Long.compare(a.startMs, b.startMs));
+
+        clearPendingBatches();
+
+        for (int i = 0; i < strokes.size(); i += MAX_STROKES_PER_GESTURE) {
+            int end = Math.min(strokes.size(), i + MAX_STROKES_PER_GESTURE);
+            long batchStart = strokes.get(i).startMs;
+            GestureDescription.Builder builder = new GestureDescription.Builder();
+            boolean added = false;
+
+            for (int j = i; j < end; j++) {
+                RecordedSequence.Stroke s = strokes.get(j);
+                Path path = new Path();
+                boolean started = false;
+                for (RecordedSequence.Point p : s.points) {
+                    float x = clamp(p.x * (w - 1f) + 0.5f, 1f, w - 1f);
+                    float y = clamp(p.y * (h - 1f) + 0.5f, 1f, h - 1f);
+                    if (!started) {
+                        path.moveTo(x, y);
+                        started = true;
+                    } else {
+                        path.lineTo(x, y);
+                    }
+                }
+                if (!started) continue;
+                long start = Math.max(0L, s.startMs - batchStart);
+                long dur = Math.max(1L, Math.min(s.durationMs,
+                        MAX_GESTURE_DURATION_MS - start));
+                if (start >= MAX_GESTURE_DURATION_MS) continue;
+                builder.addStroke(new GestureDescription.StrokeDescription(path, start, dur));
+                added = true;
+            }
+            if (!added) continue;
+
+            final GestureDescription gesture = builder.build();
+            long delay = Math.max(0L, batchStart);
+            if (delay == 0L) {
+                dispatchGesture(gesture, null, mHandler);
+            } else {
+                Runnable batch = () -> dispatchGesture(gesture, null, mHandler);
+                mPendingBatches.add(batch);
+                mHandler.postDelayed(batch, delay);
+            }
+        }
+        return true;
+    }
+
+    private void clearPendingBatches() {
+        for (Runnable r : mPendingBatches) {
+            mHandler.removeCallbacks(r);
+        }
+        mPendingBatches.clear();
+    }
+
+    private static float clamp(float v, float min, float max) {
+        return v < min ? min : (v > max ? max : v);
     }
 }

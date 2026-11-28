@@ -47,6 +47,13 @@ public class SwipeConfig {
      */
     public float jitterPercent = DEFAULT_JITTER;
 
+    /** 是否使用「录制序列」回放，替代按参数生成的随机滑动（仅无障碍方式支持）。 */
+    public boolean useRecorded = false;
+    /** 当前选用的录制序列 id；为空表示未选择。 */
+    public String recordedId = "";
+    /** 当前选用的录制序列名称，仅用于界面展示。 */
+    public String recordedName = "";
+
     /** 返回 [min, max] 之间的随机浮点数。 */
     public static float rnd(float min, float max) {
         if (max <= min) return min;
