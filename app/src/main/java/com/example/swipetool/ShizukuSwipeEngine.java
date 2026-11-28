@@ -11,6 +11,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.util.DisplayMetrics;
 
+import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -159,31 +160,9 @@ public final class ShizukuSwipeEngine {
 
     private static int[] computeCoords(SwipeConfig c) {
         DisplayMetrics dm = Resources.getSystem().getDisplayMetrics();
-        float maxX = dm.widthPixels - 1f;
-        float maxY = dm.heightPixels - 1f;
-        // 随机抖动：起点、角度、距离小幅扰动
-        float j = Math.max(0f, Math.min(1f, c.jitterPercent / 100f));
-        float sx = clamp(dm.widthPixels * (c.xPercent / 100f), 1f, maxX);
-        float sy = clamp(dm.heightPixels * (c.yPercent / 100f), 1f, maxY);
-        if (j > 0f) {
-            sx = clamp(sx + rnd(-j * dm.widthPixels * 0.05f, j * dm.widthPixels * 0.05f), 1f, maxX);
-            sy = clamp(sy + rnd(-j * dm.heightPixels * 0.05f, j * dm.heightPixels * 0.05f), 1f, maxY);
-        }
-        float angle = c.angle + (j > 0f ? rnd(-j * 20f, j * 20f) : 0f);
-        float distanceDp = c.distanceDp * (1f + (j > 0f ? rnd(-j, j) : 0f));
-        double rad = Math.toRadians(angle);
-        float ex = clamp(sx + (float) (distanceDp * dm.density * Math.cos(rad)), 1f, maxX);
-        float ey = clamp(sy + (float) (distanceDp * dm.density * Math.sin(rad)), 1f, maxY);
-        return new int[]{(int) sx, (int) sy, (int) ex, (int) ey};
-    }
-
-    private static float clamp(float v, float min, float max) {
-        return v < min ? min : (v > max ? max : v);
-    }
-
-    /** 返回 [min, max] 之间的随机浮点数。 */
-    private static float rnd(float min, float max) {
-        if (max <= min) return min;
-        return min + (float) Math.random() * (max - min);
+        SwipeTrajectory t = SwipeTrajectory.generate(
+                c, dm.widthPixels, dm.heightPixels, dm.density, new Random());
+        // input swipe 只支持直线，这里仍沿用随机的起点与终点
+        return new int[]{(int) t.startX, (int) t.startY, (int) t.endX, (int) t.endY};
     }
 }

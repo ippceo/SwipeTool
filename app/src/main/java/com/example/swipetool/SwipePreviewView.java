@@ -9,9 +9,12 @@ import android.graphics.Path;
 import android.util.AttributeSet;
 import android.view.View;
 
+import java.util.Random;
+
 /**
- * 滑动参数预览：把「起点 / 方向 / 距离 / 弯曲 / 往返」画成一张直观示意图，
- * 让用户在设置参数时能立刻看出滑动会怎么走。仅作可视化，不执行任何操作。
+ * 滑动参数预览：把「起点 / 方向 / 距离 / 弯曲 / 往返 / 随机抖动」画成示意图。
+ * 抖动开启时会额外画出两条淡淡的随机轨迹，直观体现每次滑动都会歪歪扭扭、不重复。
+ * 仅作可视化，不执行任何操作。
  */
 public class SwipePreviewView extends View {
 
@@ -21,6 +24,7 @@ public class SwipePreviewView extends View {
     private float distanceDp = 400f;
     private float curveDp = 0f;
     private boolean roundTrip = false;
+    private float jitterPercent = SwipeConfig.DEFAULT_JITTER;
 
     private final Paint mPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -45,7 +49,8 @@ public class SwipePreviewView extends View {
     }
 
     /** 更新预览参数并触发重绘。 */
-    public void update(float x, float y, float ang, float dist, float curve, boolean rt) {
+    public void update(float x, float y, float ang, float dist, float curve,
+                       boolean rt, float jitter) {
         xPercent = clamp(x, 0f, 100f);
         yPercent = clamp(y, 0f, 100f);
         angle = ang % 360f;
@@ -53,6 +58,7 @@ public class SwipePreviewView extends View {
         distanceDp = Math.max(0f, dist);
         curveDp = curve;
         roundTrip = rt;
+        jitterPercent = clamp(jitter, 0f, 100f);
         invalidate();
     }
 
@@ -80,61 +86,81 @@ public class SwipePreviewView extends View {
         canvas.drawRoundRect(left, top, right, bottom, 10f * mDensity, 10f * mDensity, mPaint);
 
         // 起点坐标（按百分比映射到预览框内）
-        float sx = left + pw * (xPercent / 100f);
-        float sy = top + ph * (yPercent / 100f);
+        float baseSx = left + pw * (xPercent / 100f);
+        float baseSy = top + ph * (yPercent / 100f);
 
         // 把距离（1..4000 dp）映射到预览框对角线的比例，保证长距离也能看出方向
-        double rad = Math.toRadians(angle);
         float diag = (float) Math.sqrt(pw * pw + ph * ph);
-        float len = Math.min(diag * 0.45f, Math.max(14f * mDensity, distanceDp * mDensity * 0.10f));
-        float ex = sx + (float) (len * Math.cos(rad));
-        float ey = sy + (float) (len * Math.sin(rad));
-        // 终点约束在预览框内
-        ex = clamp(ex, left + 4f * mDensity, right - 4f * mDensity);
-        ey = clamp(ey, top + 4f * mDensity, bottom - 4f * mDensity);
-
-        // 弯曲幅度映射到预览尺寸
+        float baseLen = Math.min(diag * 0.45f,
+                Math.max(14f * mDensity, distanceDp * mDensity * 0.10f));
         float curvePreview = curveDp * mDensity * 0.10f;
+        float strength = clamp(jitterPercent / 100f, 0f, 1f);
+        float minSide = Math.min(pw, ph);
+        float margin = 4f * mDensity;
+        float boundsLeft = left + margin, boundsTop = top + margin;
+        float boundsRight = right - margin, boundsBottom = bottom - margin;
 
-        // 去程轨迹
-        Path outPath = buildPath(sx, sy, ex, ey, curvePreview);
-        mPaint.setStyle(Paint.Style.STROKE);
-        mPaint.setStrokeWidth(3.5f * mDensity);
-        mPaint.setColor(0xFF1976D2);
-        mPaint.setStrokeCap(Paint.Cap.ROUND);
-        canvas.drawPath(outPath, mPaint);
-        mPaint.setStrokeCap(Paint.Cap.BUTT);
+        Random random = new Random();
+        // 先画两条淡淡的随机轨迹，再画主轨迹，形成「每次都不一样」的直观效果
+        for (int i = 2; i >= 0; i--) {
+            float sx = baseSx, sy = baseSy;
+            float sampleAngle = angle;
+            float len = baseLen;
+            float curve = curvePreview;
+            if (strength > 0f) {
+                sx += (random.nextFloat() * 2f - 1f) * strength * minSide * 0.05f;
+                sy += (random.nextFloat() * 2f - 1f) * strength * minSide * 0.05f;
+                sampleAngle += (random.nextFloat() * 2f - 1f) * strength * 22f;
+                len *= 1f + (random.nextFloat() * 2f - 1f) * strength * 0.30f;
+                curve += (random.nextFloat() * 2f - 1f) * strength * minSide * 0.06f;
+            }
+            sx = clamp(sx, boundsLeft, boundsRight);
+            sy = clamp(sy, boundsTop, boundsBottom);
 
-        // 终点箭头
-        drawArrowHead(canvas, sx, sy, ex, ey, 0xFF1976D2);
+            double rad = Math.toRadians(sampleAngle);
+            float ex = clamp(sx + (float) (len * Math.cos(rad)), boundsLeft, boundsRight);
+            float ey = clamp(sy + (float) (len * Math.sin(rad)), boundsTop, boundsBottom);
+            float wobble = strength * len * 0.06f;
 
-        // 往返：回程用绿色虚线
-        if (roundTrip) {
-            Path backPath = buildPath(ex, ey, sx, sy, -curvePreview);
+            Path path = SwipeTrajectory.humanPath(sx, sy, ex, ey, curve, wobble, random,
+                    boundsLeft, boundsTop, boundsRight, boundsBottom);
             mPaint.setStyle(Paint.Style.STROKE);
-            mPaint.setStrokeWidth(2.5f * mDensity);
-            mPaint.setColor(0xFF43A047);
-            mPaint.setPathEffect(new DashPathEffect(new float[]{9f * mDensity, 7f * mDensity}, 0));
-            canvas.drawPath(backPath, mPaint);
-            mPaint.setPathEffect(null);
+            mPaint.setStrokeCap(Paint.Cap.ROUND);
+            mPaint.setStrokeWidth((i == 0 ? 3.5f : 2f) * mDensity);
+            mPaint.setColor(i == 0 ? 0xFF1976D2 : (i == 1 ? 0x551976D2 : 0x2E1976D2));
+            canvas.drawPath(path, mPaint);
+            mPaint.setStrokeCap(Paint.Cap.BUTT);
+
+            if (i == 0) {
+                drawArrowHead(canvas, sx, sy, ex, ey, 0xFF1976D2);
+
+                if (roundTrip) {
+                    Path backPath = SwipeTrajectory.humanPath(ex, ey, sx, sy,
+                            -curve, wobble, random,
+                            boundsLeft, boundsTop, boundsRight, boundsBottom);
+                    mPaint.setStyle(Paint.Style.STROKE);
+                    mPaint.setStrokeWidth(2.5f * mDensity);
+                    mPaint.setColor(0xFF43A047);
+                    mPaint.setPathEffect(new DashPathEffect(
+                            new float[]{9f * mDensity, 7f * mDensity}, 0));
+                    canvas.drawPath(backPath, mPaint);
+                    mPaint.setPathEffect(null);
+                }
+            }
         }
 
-        // 起点圆点
+        // 起点圆点（固定位置，代表参数里的起点）
         mPaint.setStyle(Paint.Style.FILL);
         mPaint.setColor(0xFFE53935);
-        canvas.drawCircle(sx, sy, 5.5f * mDensity, mPaint);
+        canvas.drawCircle(baseSx, baseSy, 5.5f * mDensity, mPaint);
         mPaint.setStyle(Paint.Style.STROKE);
         mPaint.setStrokeWidth(1.5f * mDensity);
         mPaint.setColor(Color.WHITE);
-        canvas.drawCircle(sx, sy, 5.5f * mDensity, mPaint);
+        canvas.drawCircle(baseSx, baseSy, 5.5f * mDensity, mPaint);
 
         // 标注文字
         mTextPaint.setColor(0xFFE53935);
-        canvas.drawText("起点", sx + 8f * mDensity, sy - 8f * mDensity, mTextPaint);
-        if (roundTrip) {
-            mTextPaint.setColor(0xFF43A047);
-            canvas.drawText("回程", ex - 30f * mDensity, ey + 16f * mDensity, mTextPaint);
-        }
+        canvas.drawText("起点", baseSx + 8f * mDensity, baseSy - 8f * mDensity, mTextPaint);
     }
 
     private void drawArrowHead(Canvas canvas, float sx, float sy, float ex, float ey, int color) {
@@ -151,28 +177,6 @@ public class SwipePreviewView extends View {
         tri.close();
         mArrowPaint.setColor(color);
         canvas.drawPath(tri, mArrowPaint);
-    }
-
-    private static Path buildPath(float sx, float sy, float ex, float ey, float curve) {
-        Path path = new Path();
-        path.moveTo(sx, sy);
-        if (Math.abs(curve) < 0.5f) {
-            path.lineTo(ex, ey);
-        } else {
-            float mx = (sx + ex) / 2f;
-            float my = (sy + ey) / 2f;
-            float vx = ex - sx;
-            float vy = ey - sy;
-            float len = (float) Math.sqrt(vx * vx + vy * vy);
-            if (len < 0.01f) {
-                path.lineTo(ex, ey);
-            } else {
-                float nx = -vy / len;
-                float ny = vx / len;
-                path.quadTo(mx + nx * curve, my + ny * curve, ex, ey);
-            }
-        }
-        return path;
     }
 
     private static float clamp(float v, float min, float max) {

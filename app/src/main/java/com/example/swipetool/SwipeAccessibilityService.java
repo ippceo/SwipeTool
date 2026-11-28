@@ -2,13 +2,14 @@ package com.example.swipetool;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
-import android.graphics.Path;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.WindowManager;
+
+import java.util.Random;
 
 /**
  * 基于无障碍服务的屏幕滑动引擎。
@@ -128,7 +129,8 @@ public class SwipeAccessibilityService extends AccessibilityService {
     }
 
     /**
-     * 发送一次滑动手势。
+     * 发送一次滑动手势。起点、长度、方向与弯曲都在这里重新随机，
+     * 轨迹本身带横向摆动，不会每次都是一模一样的直线。
      */
     private boolean swipeOnce(SwipeConfig c) {
         DisplayMetrics dm = new DisplayMetrics();
@@ -136,83 +138,23 @@ public class SwipeAccessibilityService extends AccessibilityService {
         if (wm == null) return false;
         wm.getDefaultDisplay().getMetrics(dm);
 
-        float density = dm.density;
-        float maxX = dm.widthPixels - 1f;
-        float maxY = dm.heightPixels - 1f;
-
-        // 随机抖动：对起点、距离、角度做小幅扰动，让轨迹不固定
-        float j = Math.max(0f, Math.min(1f, c.jitterPercent / 100f));
-        float sx = clamp(dm.widthPixels * (c.xPercent / 100f), 1f, maxX);
-        float sy = clamp(dm.heightPixels * (c.yPercent / 100f), 1f, maxY);
-        if (j > 0f) {
-            sx = clamp(sx + rnd(-j * dm.widthPixels * 0.05f, j * dm.widthPixels * 0.05f), 1f, maxX);
-            sy = clamp(sy + rnd(-j * dm.heightPixels * 0.05f, j * dm.heightPixels * 0.05f), 1f, maxY);
-        }
-
-        float angle = c.angle + (j > 0f ? rnd(-j * 20f, j * 20f) : 0f);
-        float distanceDp = c.distanceDp * (1f + (j > 0f ? rnd(-j, j) : 0f));
-        double rad = Math.toRadians(angle);
-        float dx = (float) (distanceDp * density * Math.cos(rad));
-        float dy = (float) (distanceDp * density * Math.sin(rad));
-        // 终点限制在屏幕内，避免越界坐标导致 dispatchGesture 失败
-        float ex = clamp(sx + dx, 1f, maxX);
-        float ey = clamp(sy + dy, 1f, maxY);
+        Random random = new Random();
+        SwipeTrajectory trajectory = SwipeTrajectory.generate(
+                c, dm.widthPixels, dm.heightPixels, dm.density, random);
 
         GestureDescription.Builder builder = new GestureDescription.Builder();
-
         if (c.roundTrip) {
             // 去程 + 回程，回程在去程结束后再开始
-            Path outPath = buildPath(sx, sy, ex, ey, c.curveDp * density);
             builder.addStroke(new GestureDescription.StrokeDescription(
-                    outPath, 0, c.durationMs));
-
+                    trajectory.buildPath(random, false), 0, c.durationMs));
             long returnStart = c.durationMs + c.pauseMs;
-            Path backPath = buildPath(ex, ey, sx, sy, -c.curveDp * density);
             builder.addStroke(new GestureDescription.StrokeDescription(
-                    backPath, returnStart, c.durationMs));
+                    trajectory.buildPath(random, true), returnStart, c.durationMs));
         } else {
-            Path path = buildPath(sx, sy, ex, ey, c.curveDp * density);
             builder.addStroke(new GestureDescription.StrokeDescription(
-                    path, 0, c.durationMs));
+                    trajectory.buildPath(random, false), 0, c.durationMs));
         }
 
         return dispatchGesture(builder.build(), null, mHandler);
-    }
-
-    /** 将数值限制在 [min, max] 区间内。 */
-    private static float clamp(float v, float min, float max) {
-        return v < min ? min : (v > max ? max : v);
-    }
-
-    /** 返回 [min, max] 之间的随机浮点数。 */
-    private static float rnd(float min, float max) {
-        if (max <= min) return min;
-        return min + (float) Math.random() * (max - min);
-    }
-
-    /**
-     * 构造滑动轨迹。curve 为 0 时是直线，非 0 时用二次贝塞尔曲线制造弧度。
-     */
-    private static Path buildPath(float sx, float sy, float ex, float ey, float curve) {
-        Path path = new Path();
-        path.moveTo(sx, sy);
-        if (Math.abs(curve) < 0.5f) {
-            path.lineTo(ex, ey);
-        } else {
-            // 取线段中点，沿垂直方向偏移作为控制点
-            float mx = (sx + ex) / 2f;
-            float my = (sy + ey) / 2f;
-            float vx = ex - sx;
-            float vy = ey - sy;
-            float len = (float) Math.sqrt(vx * vx + vy * vy);
-            if (len < 0.01f) {
-                path.lineTo(ex, ey);
-            } else {
-                float nx = -vy / len;
-                float ny = vx / len;
-                path.quadTo(mx + nx * curve, my + ny * curve, ex, ey);
-            }
-        }
-        return path;
     }
 }

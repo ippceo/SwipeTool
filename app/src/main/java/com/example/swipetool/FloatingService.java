@@ -56,6 +56,8 @@ public class FloatingService extends Service {
             removeBall();
             stopForegroundCompat();
             stopSelf();
+            // 「退出」= 直接关闭整个应用：结束当前进程，避免通知 / 后台残留
+            android.os.Process.killProcess(android.os.Process.myPid());
             return START_NOT_STICKY;
         }
 
@@ -281,8 +283,8 @@ public class FloatingService extends Service {
                 : new Notification.Builder(this);
 
         b.setContentTitle("屏幕滑动 · 悬浮控制")
-                .setContentText(mRunning ? "运行中 · 点「停止」暂停，点「退出」关闭"
-                        : "已就绪 · 点悬浮球开始，点「退出」关闭")
+                .setContentText(mRunning ? "运行中 · 点「停止」暂停，点「退出」关闭应用"
+                        : "已就绪 · 点悬浮球开始，点「退出」关闭应用")
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setOngoing(true)
                 .setContentIntent(openPi)

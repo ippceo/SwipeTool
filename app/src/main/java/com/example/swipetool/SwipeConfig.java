@@ -5,14 +5,19 @@ package com.example.swipetool;
  * 不涉及任何平台检测绕过逻辑。
  */
 public class SwipeConfig {
+    /** 默认随机抖动强度（%）。升级自旧版本时会用它替代原来默认的 0。 */
+    public static final float DEFAULT_JITTER = 40f;
+
     /** 起点横坐标，屏幕宽度百分比 0-100 */
     public float xPercent = 50f;
     /** 起点纵坐标，屏幕高度百分比 0-100 */
     public float yPercent = 50f;
     /** 滑动角度：0=右, 90=下, 180=左, 270=上（屏幕坐标系，y 向下） */
     public float angle = 90f;
-    /** 滑动距离，单位 dp */
-    public float distanceDp = 400f;
+    /** 距离随机下限，单位 dp */
+    public float distanceMinDp = 300f;
+    /** 距离随机上限，单位 dp；与下限相等即固定长度 */
+    public float distanceMaxDp = 500f;
     /** 单次滑动持续时间，单位毫秒（越小越快） */
     public long durationMs = 500L;
     /** 两次滑动之间的固定间隔，单位毫秒（未开启随机间隔时使用） */
@@ -35,8 +40,12 @@ public class SwipeConfig {
     public boolean useShizuku = false;
     /** 运行时长上限，单位秒，0 表示不限制（到时自动停止） */
     public long maxDurationSec = 0L;
-    /** 随机抖动强度 0-100（%），影响距离、角度、起点与间隔；0 表示关闭 */
-    public float jitterPercent = 0f;
+    /**
+     * 随机抖动强度 0-100（%）：
+     * 影响起点偏移、方向角、弯曲幅度与轨迹摆动，同时叠加到间隔上。
+     * 0 表示完全按固定参数执行。
+     */
+    public float jitterPercent = DEFAULT_JITTER;
 
     /** 返回 [min, max] 之间的随机浮点数。 */
     public static float rnd(float min, float max) {

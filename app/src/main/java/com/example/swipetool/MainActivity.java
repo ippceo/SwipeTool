@@ -38,7 +38,7 @@ public class MainActivity extends Activity {
 
     private static final int REQ_SHIZUKU = 1001;
 
-    private EditText etX, etY, etAngle, etDistance, etDuration, etInterval, etLoops, etPause,
+    private EditText etX, etY, etAngle, etDistMin, etDistMax, etDuration, etInterval, etLoops, etPause,
             etCurve, etMaxDur, etJitter, etIntervalMin, etIntervalMax;
     private CheckBox cbRoundTrip, cbIntervalRandom;
     private Button btnStart, btnStop;
@@ -51,16 +51,17 @@ public class MainActivity extends Activity {
     private static final String INFO_X = "滑动起点的横坐标，按屏幕宽度百分比定位。0 = 屏幕最左边，100 = 最右边，50 = 水平居中。会与「随机抖动」叠加做小幅扰动。";
     private static final String INFO_Y = "滑动起点的纵坐标，按屏幕高度百分比定位。0 = 屏幕最上边，100 = 最下边，50 = 垂直居中。会与「随机抖动」叠加做小幅扰动。";
     private static final String INFO_ANGLE = "滑动方向角。0 = 向右，90 = 向下，180 = 向左，270 = 向上；可填任意角度实现斜向滑动。会被「随机抖动」小幅扰动。";
-    private static final String INFO_DISTANCE = "单次滑动的长度，单位 dp（会按屏幕密度自动换算成像素）。会被「随机抖动」按百分比扰动。";
+    private static final String INFO_DIST_MIN = "单次滑动长度的随机下限，单位 dp（会按屏幕密度换算成像素）。与「距离上限」相等时即为固定长度。";
+    private static final String INFO_DIST_MAX = "单次滑动长度的随机上限，单位 dp。每次滑动都会在「下限 ~ 上限」之间随机取一个长度，不会每次都一样。";
     private static final String INFO_DURATION = "单次手势从起点滑到终点的持续时间，单位毫秒。数值越小滑动越快，越大越慢。无障碍与 Shizuku 两种方式均生效。";
     private static final String INFO_INTERVAL = "未开启「间隔随机」时，连续两次滑动之间的固定等待时间，单位毫秒。开启「间隔随机」后将在最小~最大之间随机取值。";
     private static final String INFO_INTERVAL_MIN = "开启「间隔随机」后，两次滑动之间间隔的下限，单位毫秒。";
     private static final String INFO_INTERVAL_MAX = "开启「间隔随机」后，两次滑动之间间隔的上限，单位毫秒。每次循环都会在此区间内随机取值，让节奏不固定。";
     private static final String INFO_PAUSE = "开启「往返滑动」后，到达终点后停顿多久再滑回起点，单位毫秒。仅无障碍方式支持往返。";
-    private static final String INFO_CURVE = "轨迹的弯曲程度，0 为直线；正数向一侧弯曲，负数向另一侧弯曲，单位 dp。仅无障碍方式支持曲线，Shizuku 方式恒为直线。";
+    private static final String INFO_CURVE = "轨迹的基础弯曲幅度，0 为直线；正数向一侧弯曲，负数向另一侧弯曲，单位 dp。开启随机抖动后，每次还会在此基础上随机偏转，形成歪歪扭扭的走势。仅无障碍方式支持曲线，Shizuku 方式恒为直线。";
     private static final String INFO_LOOPS = "总共执行多少次滑动。0 表示无限循环，直到手动停止或达到「运行时长上限」。";
     private static final String INFO_MAX_DUR = "滑动运行多久后自动停止，单位秒。0 表示不限制，可防止忘记关闭。";
-    private static final String INFO_JITTER = "对起点 / 角度 / 距离 / 间隔做随机扰动的强度（百分比）。0 = 关闭；数值越大，连续操作的轨迹和节奏越不固定，但不改变滑动本身的性质。";
+    private static final String INFO_JITTER = "拟人化随机强度（百分比）。0 = 完全按固定参数执行；数值越大，每次滑动的起点、方向、长度、弯曲和轨迹摆动越随机，连续操作看起来更像真人手指。会把轨迹画成略带摆动的曲线。";
 
     private final Handler mStatusHandler = new Handler(Looper.getMainLooper());
     private final Runnable mStatusTicker = new Runnable() {
@@ -86,6 +87,8 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(buildUi());
+        // 打开界面时显示「上一次保存」的参数，未保存的修改不会被带进来
+        applyConfigToUi(SwipeConfigStore.load(this));
         try {
             Shizuku.addRequestPermissionResultListener(mShizukuListener);
         } catch (Throwable ignored) {
@@ -197,7 +200,8 @@ public class MainActivity extends Activity {
         etX = addField(root, "起点 X · 屏宽百分比 0–100", "50", INFO_X);
         etY = addField(root, "起点 Y · 屏高百分比 0–100", "50", INFO_Y);
         etAngle = addField(root, "角度 · 0–359（0右 90下 180左 270上）", "90", INFO_ANGLE);
-        etDistance = addField(root, "距离 · 1–4000 dp", "400", INFO_DISTANCE);
+        etDistMin = addField(root, "距离下限 · 1–4000 dp", "300", INFO_DIST_MIN);
+        etDistMax = addField(root, "距离上限 · 1–4000 dp", "500", INFO_DIST_MAX);
         etDuration = addField(root, "滑动时长 · 50–60000 ms（越小越快）", "500", INFO_DURATION);
         etInterval = addField(root, "间隔（固定）· 0–600000 ms", "500", INFO_INTERVAL);
 
@@ -216,17 +220,30 @@ public class MainActivity extends Activity {
         etCurve = addField(root, "弯曲幅度 · -2000～2000 dp（0=直线）", "0", INFO_CURVE);
         etLoops = addField(root, "循环次数 · 0–1000000（0=无限）", "0", INFO_LOOPS);
         etMaxDur = addField(root, "运行时长上限 · 0–86400 秒（0=不限）", "0", INFO_MAX_DUR);
-        etJitter = addField(root, "随机抖动 · 0–100 %（0=关闭）", "0", INFO_JITTER);
+        etJitter = addField(root, "随机抖动 · 0–100 %（0=关闭，越大越像真人）", "40", INFO_JITTER);
 
         // 预览随参数实时刷新
-        watch(etX); watch(etY); watch(etAngle); watch(etDistance); watch(etCurve);
+        watch(etX); watch(etY); watch(etAngle); watch(etDistMin); watch(etDistMax);
+        watch(etCurve); watch(etJitter);
         refreshIntervalFieldsEnabled();
         refreshPreview();
 
-        Button btnPreset = new Button(this);
-        btnPreset.setText("参数预设（保存 / 加载）");
-        btnPreset.setOnClickListener(v -> showPresetDialog());
-        root.addView(btnPreset, fullWidth(btnPreset));
+        Button btnSave = new Button(this);
+        btnSave.setText("保存当前参数（悬浮球 / 下次启动使用）");
+        btnSave.setOnClickListener(v -> saveCurrentConfig());
+        root.addView(btnSave, fullWidth(btnSave));
+
+        LinearLayout presetRow = new LinearLayout(this);
+        presetRow.setOrientation(LinearLayout.HORIZONTAL);
+        Button btnSaveAs = new Button(this);
+        btnSaveAs.setText("另存到槽位…");
+        btnSaveAs.setOnClickListener(v -> showSaveAsDialog());
+        Button btnLoad = new Button(this);
+        btnLoad.setText("读取槽位…");
+        btnLoad.setOnClickListener(v -> showLoadDialog());
+        presetRow.addView(btnSaveAs, weight());
+        presetRow.addView(btnLoad, weight());
+        root.addView(presetRow);
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -298,9 +315,7 @@ public class MainActivity extends Activity {
             }
             return;
         }
-        // 保存当前界面配置，供悬浮球在任意界面复用
-        SwipeConfigStore.save(this, collectConfig());
-
+        // 悬浮球始终使用「已保存」的参数；这里不再自动保存当前界面
         // Android 13+ 通知权限（前台服务通知）
         if (Build.VERSION.SDK_INT >= 33
                 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -315,7 +330,7 @@ public class MainActivity extends Activity {
         } else {
             startService(i);
         }
-        Toast.makeText(this, "悬浮球已开启：切到任意界面，点它开始/停止", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "悬浮球已开启：使用已保存的参数，点它开始/停止", Toast.LENGTH_LONG).show();
     }
 
     private boolean isAccessibilityEnabled() {
@@ -394,7 +409,11 @@ public class MainActivity extends Activity {
         c.xPercent = clampF(parseFloat(etX, c.xPercent), 0f, 100f);
         c.yPercent = clampF(parseFloat(etY, c.yPercent), 0f, 100f);
         c.angle = normalizeAngle(parseFloat(etAngle, c.angle));
-        c.distanceDp = clampF(parseFloat(etDistance, c.distanceDp), 1f, 4000f);
+        c.distanceMinDp = clampF(parseFloat(etDistMin, c.distanceMinDp), 1f, 4000f);
+        c.distanceMaxDp = clampF(parseFloat(etDistMax, c.distanceMaxDp), 1f, 4000f);
+        if (c.distanceMaxDp < c.distanceMinDp) {
+            float t = c.distanceMinDp; c.distanceMinDp = c.distanceMaxDp; c.distanceMaxDp = t;
+        }
         c.durationMs = clampL((long) parseLong(etDuration, c.durationMs), 50L, 60000L);
         c.intervalMs = clampL((long) parseLong(etInterval, c.intervalMs), 0L, 600000L);
         c.intervalRandom = cbIntervalRandom.isChecked();
@@ -413,23 +432,32 @@ public class MainActivity extends Activity {
         return c;
     }
 
-    private void showPresetDialog() {
-        final String[] items = new String[]{
-                "槽 1 · 保存当前", "槽 1 · 加载",
-                "槽 2 · 保存当前", "槽 2 · 加载",
-                "槽 3 · 保存当前", "槽 3 · 加载"
-        };
+    /** 保存当前界面参数为「生效配置」，供悬浮球与下次启动使用。 */
+    private void saveCurrentConfig() {
+        SwipeConfigStore.save(this, collectConfig());
+        Toast.makeText(this, "已保存：悬浮球和下次启动将使用这些参数", Toast.LENGTH_SHORT).show();
+    }
+
+    private void showSaveAsDialog() {
+        final String[] items = new String[]{"槽 1", "槽 2", "槽 3"};
         new AlertDialog.Builder(this)
-                .setTitle("参数预设")
+                .setTitle("另存到槽位")
                 .setItems(items, (d, which) -> {
-                    int slot = which / 2 + 1;
-                    if (which % 2 == 0) {
-                        SwipeConfigStore.saveSlot(this, slot, collectConfig());
-                        Toast.makeText(this, "已保存到槽 " + slot, Toast.LENGTH_SHORT).show();
-                    } else {
-                        applyConfigToUi(SwipeConfigStore.loadSlot(this, slot));
-                        Toast.makeText(this, "已加载槽 " + slot, Toast.LENGTH_SHORT).show();
-                    }
+                    SwipeConfigStore.saveSlot(this, which + 1, collectConfig());
+                    Toast.makeText(this, "已另存到槽 " + (which + 1), Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void showLoadDialog() {
+        final String[] items = new String[]{"槽 1", "槽 2", "槽 3"};
+        new AlertDialog.Builder(this)
+                .setTitle("读取槽位")
+                .setItems(items, (d, which) -> {
+                    applyConfigToUi(SwipeConfigStore.loadSlot(this, which + 1));
+                    Toast.makeText(this, "已读取槽 " + (which + 1)
+                            + "，点「保存」后悬浮球才会使用", Toast.LENGTH_LONG).show();
                 })
                 .setNegativeButton("取消", null)
                 .show();
@@ -439,7 +467,8 @@ public class MainActivity extends Activity {
         etX.setText(fmtNum(c.xPercent));
         etY.setText(fmtNum(c.yPercent));
         etAngle.setText(fmtNum(c.angle));
-        etDistance.setText(fmtNum(c.distanceDp));
+        etDistMin.setText(fmtNum(c.distanceMinDp));
+        etDistMax.setText(fmtNum(c.distanceMaxDp));
         etDuration.setText(String.valueOf(c.durationMs));
         etInterval.setText(String.valueOf(c.intervalMs));
         etLoops.setText(String.valueOf(c.loops));
@@ -468,8 +497,8 @@ public class MainActivity extends Activity {
     }
 
     private void startSwipe() {
+        // 直接使用界面上的当前参数执行；是否持久化由「保存」按钮决定
         SwipeConfig c = collectConfig();
-        SwipeConfigStore.save(this, c);
 
         if (c.useShizuku) {
             if (!ShizukuSwipeEngine.isAvailable()) {
@@ -597,9 +626,12 @@ public class MainActivity extends Activity {
         float x = parseFloat(etX, 50f);
         float y = parseFloat(etY, 50f);
         float ang = parseFloat(etAngle, 90f);
-        float dist = parseFloat(etDistance, 400f);
+        float dMin = parseFloat(etDistMin, 300f);
+        float dMax = parseFloat(etDistMax, 500f);
+        float dist = (dMin + dMax) / 2f;
         float curve = parseFloat(etCurve, 0f);
-        mPreview.update(x, y, ang, dist, curve, cbRoundTrip.isChecked());
+        float jitter = parseFloat(etJitter, SwipeConfig.DEFAULT_JITTER);
+        mPreview.update(x, y, ang, dist, curve, cbRoundTrip.isChecked(), jitter);
     }
 
     /** 根据「间隔随机」开关启用/禁用相关输入框。 */
